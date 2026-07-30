@@ -4,34 +4,31 @@ Sandbox zum Testen von Cursor Agents.
 
 ## Atrium — GUI-Entwurf
 
-Interaktiver Frontend-Prototyp einer agentischen Lernplattform (Chat · Artefakte · Timer · Foto-Korrektur · Lernübersicht).
+Responsiver Prototyp einer agentischen Lernplattform.
 
-### Lokal ansehen
+### Design-Idee
 
-Datei `index.html` im Browser öffnen oder:
+| Breakpoint | Layout |
+|------------|--------|
+| **Handy** | Chat vollflächig · Workspace als Bottom-Sheet · FAB · 5-Tab-Navigation |
+| **Tablet ≥900px** | Chat + Workspace-Spalte · Phasenleiste |
+| **Desktop ≥1100px** | Dateien/Fächer · Chat · Workspace (Cursor-ähnlich) |
+
+**Deine Konzepte drin:** Lernorte → Fach-Agenten, Shared-State-Artefakte, LaTeX, Agent-Timer, Foto-Korrektur, Dateilinsen, konservative Übersicht, Unterwegs-Challenges.
+
+**Erweitert um:** Session-Phasen, Tutor/Examiner, „Warum diese Aufgabe?“, Teach-back, Session-Export-Hook, Vergleichsansicht-Platzhalter.
+
+### Ansehen
 
 ```bash
 python3 -m http.server 8080
 ```
 
-Dann <http://localhost:8080> öffnen.
+Oder **GitHub Pages:** Settings → Pages → Branch (z. B. `main` oder dieser Feature-Branch), Ordner `/ (root)`  
+→ `https://polofiziert.github.io/Agents-Playroom/`
 
-### Auf dem Handy / PC via GitHub Pages
+### Am Handy kurz testen
 
-1. Repo → **Settings** → **Pages**
-2. **Source:** Deploy from a branch
-3. Branch: `main` (oder dieser PR-Branch), Ordner: `/ (root)`
-4. Speichern — nach 1–2 Minuten:
-
-`https://polofiziert.github.io/Agents-Playroom/`
-
-Pages ist dafür der richtige Ort: rein statisches HTML/CSS/JS, kein Backend, mobil & desktop gleich erreichbar.
-
-### Im Prototyp ausprobieren
-
-- Lernort oben wechseln (Schule / Ausbildung / Studium)
-- Fach-Agent wählen, Chat mit LaTeX (KaTeX)
-- Artefakt: BST-Knoten einfügen — State ist JSON (agent-lesbar)
-- Timer starten → System-Event „Zeit ist um“ + Auswertung
-- Foto-Korrektur simulieren
-- Mobile: untere Navigation (Fächer / Session / Dateien / Übersicht)
+1. Session öffnen → FAB **Workspace** → BST `insert(7)` / `insert(3)`
+2. Tool-Chips: Timer, LaTeX, Foto, Teach-back
+3. Tabs: Fächer (Lernort), Unterwegs, Dateien, Übersicht

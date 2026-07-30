@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f6b6b" />
+    <meta name="theme-color" content="#0c4a4a" />
     <meta
       name="description"
-      content="Atrium — GUI-Entwurf für eine agentische Lernplattform (Chat, Artefakte, Fortschritt)."
+      content="Atrium — responsiver GUI-Entwurf für eine agentische Lernplattform."
     />
     <title>Atrium — Lern-Workspace</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Literata:opsz,wght@7..72,400;7..72,600&family=Sora:wght@400;550;600;650&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Literata:opsz,wght@7..72,400;7..72,600&family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link
@@ -25,13 +25,14 @@
     <script defer src="./assets/app.js"></script>
   </head>
   <body>
-    <div class="app">
+    <div class="app" id="app">
+      <!-- Brand + context bar -->
       <header class="topbar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true"></div>
-          <div>
+          <div class="brand-text">
             <div class="brand-name">Atrium</div>
-            <div class="brand-tag">Lern-Workspace · Prototyp</div>
+            <div class="brand-tag" id="context-crumb">Studium · Informatik</div>
           </div>
         </div>
 
@@ -41,41 +42,65 @@
           <button class="place-btn" type="button" data-place="studium" aria-pressed="true">Studium</button>
         </div>
 
-        <button class="icon-btn desktop-only" type="button" id="btn-overview-desktop" title="Lernübersicht" aria-label="Lernübersicht">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6" />
-          </svg>
-        </button>
+        <div class="top-actions">
+          <div class="mode-switch desktop-only" role="group" aria-label="Agenten-Modus">
+            <button class="mode-btn" type="button" data-mode="tutor" aria-pressed="true">Tutor</button>
+            <button class="mode-btn" type="button" data-mode="examiner" aria-pressed="false">Examiner</button>
+          </div>
+          <button class="icon-btn desktop-only" type="button" id="btn-nav-toggle" title="Seitenleiste" aria-label="Seitenleiste umschalten" aria-pressed="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 6h14M5 12h8M5 18h14"/></svg>
+          </button>
+        </div>
       </header>
 
-      <!-- Session workspace -->
-      <div class="shell" id="view-session" data-view-panel>
-        <aside class="panel nav-panel" aria-label="Fächer und Dateien">
-          <div class="panel-header">
-            <span class="panel-title">Fächer · Studium</span>
-          </div>
-          <ul class="subject-list" id="subject-list-desktop"></ul>
+      <!-- Session phase strip -->
+      <div class="phase-bar" id="phase-bar" hidden>
+        <ol class="phases" id="phases">
+          <li class="phase" data-phase="warmup" aria-current="false"><span>1</span> Warm-up</li>
+          <li class="phase" data-phase="focus" aria-current="true"><span>2</span> Fokus</li>
+          <li class="phase" data-phase="retrieval" aria-current="false"><span>3</span> Retrieval</li>
+          <li class="phase" data-phase="reflect" aria-current="false"><span>4</span> Reflexion</li>
+        </ol>
+        <p class="why-chip" id="why-chip">Warum das? BST-Insert laut learner-model noch unsicher.</p>
+      </div>
 
-          <div class="panel-header" style="border-top: 1px solid var(--line)">
-            <span class="panel-title">Dateien</span>
+      <!-- ——— SESSION ——— -->
+      <div class="shell" id="view-session" data-view="session">
+        <aside class="panel nav-panel" id="nav-panel" aria-label="Fächer und Dateien">
+          <div class="panel-block">
+            <div class="panel-header">
+              <span class="panel-title" id="subjects-title">Fächer · Studium</span>
+            </div>
+            <ul class="subject-list" id="subject-list-desktop"></ul>
           </div>
-          <div class="lens-tabs" role="tablist" aria-label="Dateilinse">
-            <button class="lens-tab" type="button" role="tab" data-lens="heute" aria-selected="true">Heute</button>
-            <button class="lens-tab" type="button" role="tab" data-lens="stoff">Stoff</button>
-            <button class="lens-tab" type="button" role="tab" data-lens="arbeit">Meine Arbeit</button>
-            <button class="lens-tab" type="button" role="tab" data-lens="gedachtnis">Gedächtnis</button>
+          <div class="panel-block grow">
+            <div class="panel-header">
+              <span class="panel-title">Dateien</span>
+            </div>
+            <div class="lens-tabs" role="tablist" aria-label="Dateilinse">
+              <button class="lens-tab" type="button" data-lens="heute" aria-selected="true">Heute</button>
+              <button class="lens-tab" type="button" data-lens="stoff">Stoff</button>
+              <button class="lens-tab" type="button" data-lens="arbeit">Arbeit</button>
+              <button class="lens-tab" type="button" data-lens="gedachtnis">Gedächtnis</button>
+            </div>
+            <ul class="file-list" id="file-list"></ul>
           </div>
-          <ul class="file-list" id="file-list"></ul>
         </aside>
 
         <section class="panel chat-panel" aria-label="Tutor-Chat">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title" id="agent-label">Agent · Informatik</div>
+          <div class="panel-header chat-header">
+            <div class="agent-meta">
+              <span class="agent-avatar" aria-hidden="true" id="agent-avatar">In</span>
+              <div>
+                <div class="agent-name" id="agent-label">Informatik</div>
+                <div class="agent-sub" id="agent-mode-label">Tutor · erklärt &amp; führt</div>
+              </div>
             </div>
             <div class="session-pill" id="session-pill">
               <span class="dot" aria-hidden="true"></span>
-              Fokus-Session · <span id="session-clock">12:40</span>
+              <span id="session-status">Fokus</span>
+              <span class="sep">·</span>
+              <span id="session-clock">—</span>
             </div>
           </div>
 
@@ -83,16 +108,17 @@
 
           <div class="composer">
             <div class="composer-tools">
-              <button class="tool-chip" type="button" data-tool="photo">Foto korrigieren</button>
-              <button class="tool-chip" type="button" data-tool="artifact">Artefakt öffnen</button>
-              <button class="tool-chip" type="button" data-tool="timer">Timer 5 Min</button>
-              <button class="tool-chip" type="button" data-tool="latex">LaTeX zeigen</button>
+              <button class="tool-chip" type="button" data-tool="workspace">Workspace</button>
+              <button class="tool-chip" type="button" data-tool="photo">Foto</button>
+              <button class="tool-chip" type="button" data-tool="timer">Timer 5′</button>
+              <button class="tool-chip" type="button" data-tool="latex">LaTeX</button>
+              <button class="tool-chip" type="button" data-tool="teachback">Teach-back</button>
             </div>
             <div class="composer-row">
               <textarea
                 id="composer-input"
                 rows="1"
-                placeholder="Frag den Fach-Agenten, lade Kontext an, oder beschreibe deine Lösung…"
+                placeholder="Nachricht, Lösung beschreiben, oder Kontext anhängen…"
                 aria-label="Nachricht an den Agenten"
               ></textarea>
               <button class="send-btn" type="button" id="send-btn" aria-label="Senden">
@@ -104,138 +130,215 @@
           </div>
         </section>
 
-        <aside class="panel rail-panel" aria-label="Arbeitsfläche">
+        <!-- Desktop rail / also content source for mobile sheet -->
+        <aside class="panel rail-panel" id="rail-panel" aria-label="Workspace">
           <div class="rail-tabs" role="tablist">
-            <button class="rail-tab" type="button" role="tab" data-rail="artifact" aria-selected="true">Artefakt</button>
-            <button class="rail-tab" type="button" role="tab" data-rail="notes">Notiz</button>
-            <button class="rail-tab" type="button" role="tab" data-rail="timer">Timer</button>
-            <button class="rail-tab" type="button" role="tab" data-rail="photo">Foto</button>
+            <button class="rail-tab" type="button" data-rail="artifact" aria-selected="true">Artefakt</button>
+            <button class="rail-tab" type="button" data-rail="notes">Notiz</button>
+            <button class="rail-tab" type="button" data-rail="timer">Timer</button>
+            <button class="rail-tab" type="button" data-rail="photo">Foto</button>
           </div>
-
-          <div class="rail-body active" id="rail-artifact" data-rail-panel="artifact">
-            <div class="artifact-stage">
-              <h3>BST · Knoten einfügen</h3>
-              <p class="hint">
-                Füge <strong>7</strong> und <strong>3</strong> ein. Der Agent liest denselben State wie du siehst —
-                nicht das Canvas-Bild.
-              </p>
-              <svg class="tree-canvas" id="tree-svg" viewBox="0 0 320 180" role="img" aria-label="Binärbaum"></svg>
-              <div class="node-actions" id="tree-actions">
-                <button class="btn btn-ghost" type="button" data-insert="7">insert(7)</button>
-                <button class="btn btn-ghost" type="button" data-insert="3">insert(3)</button>
-                <button class="btn btn-ghost" type="button" data-insert="9">insert(9)</button>
-                <button class="btn btn-primary" type="button" id="check-tree">Prüfen</button>
+          <div class="rail-scroll" id="rail-scroll">
+            <!-- filled / existing panels -->
+            <div class="rail-body active" data-rail-panel="artifact">
+              <div class="artifact-stage">
+                <div class="artifact-head">
+                  <h3>BST · Knoten einfügen</h3>
+                  <span class="badge open" data-artifact-badge>Offen</span>
+                </div>
+                <p class="hint">
+                  Shared State: du tippst, der Agent liest denselben JSON — nicht das Bild.
+                </p>
+                <svg class="tree-canvas" id="tree-svg" viewBox="0 0 320 180" role="img" aria-label="Binärbaum"></svg>
+                <div class="node-actions" id="tree-actions">
+                  <button class="btn btn-ghost" type="button" data-insert="7">insert(7)</button>
+                  <button class="btn btn-ghost" type="button" data-insert="3">insert(3)</button>
+                  <button class="btn btn-ghost" type="button" data-insert="9">insert(9)</button>
+                  <button class="btn btn-primary" type="button" id="check-tree">Prüfen</button>
+                </div>
+                <details class="state-details">
+                  <summary>Agent-State (JSON)</summary>
+                  <pre class="state-box" data-tree-state></pre>
+                </details>
               </div>
-              <div class="state-box" id="tree-state" aria-label="Maschinenlesbarer Artefakt-State"></div>
             </div>
-          </div>
 
-          <div class="rail-body" id="rail-notes" data-rail-panel="notes">
-            <label class="panel-title" for="note-area">Mitschrift · Informatik</label>
-            <textarea class="note-area" id="note-area" style="margin-top: 0.65rem">
-BST: links &lt; knoten &lt; rechts
-Heute: insert + Inorder-Traversal üben
-Offene Frage: Wie erklärt man Rotation anschaulich?
-</textarea
-            >
-            <div class="btn-row" style="margin-top: 0.65rem">
-              <button class="btn btn-ghost" type="button" id="share-note">An Agent senden</button>
-            </div>
-          </div>
-
-          <div class="rail-body" id="rail-timer" data-rail-panel="timer">
-            <div class="timer-face">
-              <div class="timer-ring" id="timer-ring" style="--progress: 100%">
-                <div class="timer-time" id="timer-display">05:00</div>
-              </div>
-              <p class="timer-caption">
-                Zeitbasierte Aufgabe. Der Agent startet den Timer und wertet bei Ablauf aus —
-                als System-Event, nicht als Chat-Prosa.
-              </p>
+            <div class="rail-body" data-rail-panel="notes">
+              <label class="panel-title" for="note-area">Mitschrift</label>
+              <textarea class="note-area" id="note-area">
+BST: links &lt; Knoten &lt; rechts
+Heute: Insert + Inorder
+Offen: Rotation anschaulich erklären
+</textarea>
               <div class="btn-row">
-                <button class="btn btn-primary" type="button" id="timer-start">Start</button>
-                <button class="btn btn-ghost" type="button" id="timer-reset">Reset</button>
+                <button class="btn btn-ghost" type="button" id="share-note">An Agent senden</button>
+                <button class="btn btn-ghost" type="button" id="export-note">Session exportieren</button>
               </div>
             </div>
-          </div>
 
-          <div class="rail-body" id="rail-photo" data-rail-panel="photo">
-            <div class="photo-drop">
-              <strong>Papier → Korrektur</strong>
-              <p>Foto von Mitschrift oder Aufgabe. Agent markiert Stellen und schreibt strukturiertes Feedback.</p>
-              <button class="btn btn-primary" type="button" id="simulate-photo">Beispiel-Foto laden</button>
+            <div class="rail-body" data-rail-panel="timer">
+              <div class="timer-face">
+                <div class="timer-ring" id="timer-ring" style="--progress: 100%">
+                  <div class="timer-time" id="timer-display">05:00</div>
+                </div>
+                <p class="timer-caption">
+                  Der Agent besitzt den Timer. Ablauf = System-Event + Auswertung des Artefakt-States.
+                </p>
+                <div class="btn-row">
+                  <button class="btn btn-primary" type="button" id="timer-start">Start</button>
+                  <button class="btn btn-ghost" type="button" id="timer-reset">Reset</button>
+                </div>
+              </div>
             </div>
-            <div class="correction-preview" id="correction-preview">
-              <div class="paper-sheet">
-                f(x) = x² + 2x + 1<br />
-                = (x + 1)(x − 1) ← ?
-                <span class="mark mark-a"></span>
-                <span class="mark mark-b"></span>
+
+            <div class="rail-body" data-rail-panel="photo">
+              <div class="photo-drop">
+                <strong>Papier → Korrektur</strong>
+                <p>Foto von Aufgabe oder Mitschrift. Markierungen + strukturiertes Feedback.</p>
+                <button class="btn btn-primary" type="button" id="simulate-photo">Beispiel laden</button>
+              </div>
+              <div class="correction-preview" id="correction-preview">
+                <div class="paper-sheet">
+                  f(x) = x² + 2x + 1<br />
+                  = (x + 1)(x − 1) ← ?
+                  <span class="mark mark-a"></span>
+                  <span class="mark mark-b"></span>
+                </div>
               </div>
             </div>
           </div>
         </aside>
       </div>
 
-      <!-- Subjects (mobile) -->
-      <section class="view" id="view-subjects" data-view-panel>
+      <!-- ——— SUBJECTS (mobile/tablet primary picker) ——— -->
+      <section class="view" id="view-subjects" data-view="subjects">
         <div class="view-header">
           <h1>Fächer</h1>
-          <p>Jeder Agent ist ein Fach im gewählten Lernort. Wechsle Ort oben, Fach hier.</p>
+          <p>Ein Agent pro Fach im Lernort. Ort hier oder oben wechseln.</p>
         </div>
-        <ul class="subject-list" id="subject-list-mobile"></ul>
+        <div class="place-switch mobile-places" role="group" aria-label="Lernort">
+          <button class="place-btn" type="button" data-place="schule">Schule</button>
+          <button class="place-btn" type="button" data-place="ausbildung">Ausbildung</button>
+          <button class="place-btn" type="button" data-place="studium" aria-pressed="true">Studium</button>
+        </div>
+        <div class="mode-switch mobile-block" role="group" aria-label="Agenten-Modus">
+          <button class="mode-btn" type="button" data-mode="tutor" aria-pressed="true">Tutor</button>
+          <button class="mode-btn" type="button" data-mode="examiner" aria-pressed="false">Examiner</button>
+        </div>
+        <ul class="subject-list cards" id="subject-list-mobile"></ul>
       </section>
 
-      <!-- Files (mobile) -->
-      <section class="view" id="view-files" data-view-panel>
+      <!-- ——— FILES ——— -->
+      <section class="view" id="view-files" data-view="files">
         <div class="view-header">
           <h1>Dateien</h1>
-          <p>Linsen statt rohem Dateibaum: Heute, Stoff, deine Arbeit, Gedächtnis.</p>
+          <p>Linsen statt Dateibaum — je nachdem, was jetzt Sinn ergibt.</p>
         </div>
-        <div class="lens-tabs" role="tablist" aria-label="Dateilinse mobil">
+        <div class="lens-tabs wrap" role="tablist">
           <button class="lens-tab" type="button" data-lens="heute" aria-selected="true">Heute</button>
           <button class="lens-tab" type="button" data-lens="stoff">Stoff</button>
           <button class="lens-tab" type="button" data-lens="arbeit">Meine Arbeit</button>
           <button class="lens-tab" type="button" data-lens="gedachtnis">Gedächtnis</button>
         </div>
-        <ul class="file-list" id="file-list-mobile"></ul>
+        <div class="layer-legend">
+          <span><i class="file-dot fach"></i> Fach</span>
+          <span><i class="file-dot place"></i> Lernort</span>
+          <span><i class="file-dot learner"></i> Du</span>
+        </div>
+        <ul class="file-list padded" id="file-list-mobile"></ul>
       </section>
 
-      <!-- Progress -->
-      <section class="view" id="view-progress" data-view-panel>
+      <!-- ——— PROGRESS ——— -->
+      <section class="view" id="view-progress" data-view="progress">
         <div class="view-header">
           <h1>Lernübersicht</h1>
-          <p>Konservative Gamification: Kompetenz statt Streak-Terror. Readiness pro Fach, sanfte Challenges.</p>
+          <p>Kompetenz vor Streak. Sanfte Aktivierung statt Druck.</p>
         </div>
         <div class="stats-row">
-          <div class="stat"><small>Session heute</small><strong>42 min</strong></div>
-          <div class="stat"><small>Prüfungs-Readiness</small><strong>68%</strong></div>
-          <div class="stat"><small>Offene Lücken</small><strong>5</strong></div>
-          <div class="stat"><small>Ruhe-Streak</small><strong>4 Tage</strong></div>
+          <div class="stat"><small>Heute</small><strong>42 min</strong></div>
+          <div class="stat"><small>Readiness</small><strong id="ready-pct">68%</strong></div>
+          <div class="stat"><small>Lücken</small><strong>5</strong></div>
+          <div class="stat"><small>Ruhe-Tage</small><strong>4</strong></div>
         </div>
+        <h2 class="section-label">Skills</h2>
         <div class="skill-list" id="skill-list"></div>
         <div class="challenge-strip">
           <h2>Unterwegs · 3-Minuten-Aktivierung</h2>
-          <p>Zwei Retrieval-Fragen zu BST + eine Formel aus Analysis — ohne volle Session, Wissen warm halten.</p>
+          <p>Zwei Retrieval-Fragen + eine Formel — ohne volle Session, Wissen warm halten.</p>
           <button class="btn" type="button" id="start-challenge">Challenge starten</button>
+        </div>
+        <div class="compare-strip">
+          <h2>Vergleichsansicht (Idee)</h2>
+          <p>Meine Lösung · Musterlösung · Struktur-Diff — später als eigenes Artefakt.</p>
         </div>
       </section>
 
-      <nav class="bottom-nav mobile-only" aria-label="Hauptnavigation">
+      <!-- ——— GO (mobile micro-learning) ——— -->
+      <section class="view" id="view-go" data-view="go">
+        <div class="view-header">
+          <h1>Unterwegs</h1>
+          <p>Kurze Challenges für Bahn, Pause, Urlaub — offline-fähig gedacht.</p>
+        </div>
+        <div class="go-deck" id="go-deck">
+          <article class="go-card">
+            <small>Informatik · Retrieval</small>
+            <h2>Welche Traversierung sortiert einen BST?</h2>
+            <div class="btn-row">
+              <button class="btn btn-ghost" type="button" data-quiz="pre">Preorder</button>
+              <button class="btn btn-ghost" type="button" data-quiz="in">Inorder</button>
+              <button class="btn btn-ghost" type="button" data-quiz="post">Postorder</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Mobile workspace sheet -->
+      <div class="sheet-backdrop" id="sheet-backdrop" hidden></div>
+      <div class="sheet" id="workspace-sheet" role="dialog" aria-label="Workspace" aria-hidden="true" hidden>
+        <div class="sheet-handle" aria-hidden="true"></div>
+        <div class="sheet-header">
+          <strong>Workspace</strong>
+          <button class="icon-btn" type="button" id="sheet-close" aria-label="Schließen">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="sheet-tabs rail-tabs" role="tablist">
+          <button class="rail-tab" type="button" data-rail="artifact" aria-selected="true">Artefakt</button>
+          <button class="rail-tab" type="button" data-rail="notes">Notiz</button>
+          <button class="rail-tab" type="button" data-rail="timer">Timer</button>
+          <button class="rail-tab" type="button" data-rail="photo">Foto</button>
+        </div>
+        <div class="sheet-body" id="sheet-body"></div>
+      </div>
+
+      <!-- FAB: open workspace on mobile during session -->
+      <button class="fab" type="button" id="fab-workspace" aria-label="Workspace öffnen" hidden>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="4" y="5" width="16" height="14" rx="2" />
+          <path d="M4 10h16" />
+        </svg>
+        <span>Workspace</span>
+      </button>
+
+      <nav class="bottom-nav" aria-label="Hauptnavigation">
         <button class="nav-item" type="button" data-view="subjects">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h14" /></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
           Fächer
         </button>
         <button class="nav-item" type="button" data-view="session" aria-current="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 6h14v12H5zM9 10h6M9 14h4" /></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 6h14v12H5zM9 10h6M9 14h4"/></svg>
           Session
         </button>
+        <button class="nav-item" type="button" data-view="go">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4"/></svg>
+          Unterwegs
+        </button>
         <button class="nav-item" type="button" data-view="files">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h6l2 2h8v10H4z" /></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h6l2 2h8v10H4z"/></svg>
           Dateien
         </button>
         <button class="nav-item" type="button" data-view="progress">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6" /></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6"/></svg>
           Übersicht
         </button>
       </nav>
