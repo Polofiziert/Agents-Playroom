@@ -183,6 +183,11 @@ button {
   border-radius: 999px;
 }
 
+.mode-switch.mobile-block {
+  margin: 0 0 1rem;
+  width: fit-content;
+}
+
 .place-switch.mobile-places {
   display: flex;
   margin: 0 0 0.85rem;
