@@ -2,21 +2,25 @@
 
 Sandbox zum Testen von Cursor Agents.
 
-## Atrium — GUI-Entwurf
+## Atrium — ruhiger GUI-Entwurf
 
-Responsiver Prototyp einer agentischen Lernplattform.
+Lern-UI nach **Progressive Disclosure** (NN/g): nur zeigen, was jetzt dran ist. Der Rest ist erreichbar, aber nicht im Weg.
 
-### Design-Idee
+### UX-Prinzipien (Recherche → Umsetzung)
 
-| Breakpoint | Layout |
-|------------|--------|
-| **Handy** | Chat vollflächig · Workspace als Bottom-Sheet · FAB · 5-Tab-Navigation |
-| **Tablet ≥900px** | Chat + Workspace-Spalte · Phasenleiste |
-| **Desktop ≥1100px** | Dateien/Fächer · Chat · Workspace (Cursor-ähnlich) |
+| Pattern | Quelle / Idee | Bei Atrium |
+|--------|----------------|------------|
+| Progressive Disclosure | Nielsen Norman Group | Session = ein Schritt; Dateien/Stats unter **Mehr** |
+| Focus Mode | LearnDash, ADHD-UX | Keine Sidebars während des Lernens |
+| One next action | Brilliant-ähnlich | Home zeigt nur „Als Nächstes“ |
+| Details on demand | Accordion / Sheet / ⋯-Menü | Formel, State, Foto, Timer hinter Abruf |
+| Micro-learning | Duolingo-light | „Nur 3 Minuten?“ getrennt von Tiefensession |
 
-**Deine Konzepte drin:** Lernorte → Fach-Agenten, Shared-State-Artefakte, LaTeX, Agent-Timer, Foto-Korrektur, Dateilinsen, konservative Übersicht, Unterwegs-Challenges.
+### Drei Ebenen
 
-**Erweitert um:** Session-Phasen, Tutor/Examiner, „Warum diese Aufgabe?“, Teach-back, Session-Export-Hook, Vergleichsansicht-Platzhalter.
+1. **Heute** — eine Karte, ein Start  
+2. **Session** — gestufte Schritte (Briefing → Artefakt → Feedback → Retrieval → Ende)  
+3. **Mehr** — Lernort, Fach, Dateien, Übersicht (bewusst außerhalb vom Fokus)
 
 ### Ansehen
 
@@ -24,11 +28,5 @@ Responsiver Prototyp einer agentischen Lernplattform.
 python3 -m http.server 8080
 ```
 
-Oder **GitHub Pages:** Settings → Pages → Branch (z. B. `main` oder dieser Feature-Branch), Ordner `/ (root)`  
-→ `https://polofiziert.github.io/Agents-Playroom/`
-
-### Am Handy kurz testen
-
-1. Session öffnen → FAB **Workspace** → BST `insert(7)` / `insert(3)`
-2. Tool-Chips: Timer, LaTeX, Foto, Teach-back
-3. Tabs: Fächer (Lernort), Unterwegs, Dateien, Übersicht
+GitHub Pages: `https://polofiziert.github.io/Agents-Playroom/`  
+(Branch in Settings → Pages prüfen)
