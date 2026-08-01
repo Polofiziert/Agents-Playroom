@@ -1,5 +1,4 @@
-/* Atrium — calm, staged learning prototype
-   One screen · one job · details on request */
+/* Atrium — adaptive: staged mobile · Cursor shell desktop */
 
 const places = {
   schule: {
@@ -59,16 +58,22 @@ let place = "studium";
 let subjectId = "informatik";
 let agentMode = "tutor";
 let lens = "heute";
-let step = 0; // session step index
+let step = 0;
+let screen = "home";
 let tree = { v: 5, l: null, r: null };
 let actions = [];
 let timerId = null;
 let timerLeft = 300;
 let note = `BST: links < Knoten < rechts
 Heute: Insert üben`;
+let filesOpen = false;
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+function isDesktop() {
+  return window.matchMedia("(min-width: 1100px)").matches;
+}
 
 function subject() {
   return places[place].subjects.find((x) => x.id === subjectId) || places[place].subjects[0];
@@ -82,10 +87,53 @@ function toast(msg) {
   toast._t = setTimeout(() => el.classList.remove("show"), 2200);
 }
 
+function artifactHtml(withActions = true) {
+  return `<div class="artifact-simple">
+    <h2>BST · einfügen</h2>
+    <svg class="tree-canvas" viewBox="0 0 320 170" role="img" aria-label="Binärbaum"></svg>
+    ${
+      withActions
+        ? `<div class="actions">
+      <button class="btn btn-mono" type="button" data-insert="7">insert(7)</button>
+      <button class="btn btn-mono" type="button" data-insert="3">insert(3)</button>
+      <button class="btn btn-mono" type="button" data-insert="9">insert(9)</button>
+    </div>`
+        : ""
+    }
+  </div>`;
+}
+
+function idleRail() {
+  return `<div class="rail-idle">
+    <p class="desk-label">Workspace</p>
+    <p class="rail-idle-text">Artefakte erscheinen hier, sobald die Session sie braucht.</p>
+  </div>`;
+}
+
+function updateLayoutAttr() {
+  const app = $("#app");
+  if (!isDesktop()) {
+    app.removeAttribute("data-layout");
+    return;
+  }
+  if (screen === "focus") {
+    const needsRail = step === 1 || step === 2;
+    app.dataset.layout = needsRail ? "focus" : "focus-idle";
+  } else {
+    app.dataset.layout = "browse";
+  }
+}
+
 function showScreen(name) {
+  screen = name;
   $$(".screen").forEach((el) => el.classList.toggle("is-active", el.dataset.screen === name));
   closeMenu();
   closeSheet();
+  updateLayoutAttr();
+  if (name !== "focus") {
+    $("#desk-rail").innerHTML = idleRail();
+    $("#desk-rail").dataset.state = "idle";
+  }
 }
 
 function updateHome() {
@@ -97,23 +145,38 @@ function updateHome() {
 }
 
 function renderSubjects() {
-  $("#subject-picks").innerHTML = places[place].subjects
+  const mobileList = $("#subject-picks");
+  const deskList = $("#desk-subjects");
+  const htmlMobile = places[place].subjects
     .map(
       (s) => `<li><button type="button" data-pick-subject="${s.id}" ${
         s.id === subjectId ? 'aria-current="true"' : ""
       }><strong>${s.name}</strong><span>${s.blurb}</span></button></li>`
     )
     .join("");
+  const htmlDesk = places[place].subjects
+    .map(
+      (s) => `<li><button type="button" data-pick-subject="${s.id}" ${
+        s.id === subjectId ? 'aria-current="true"' : ""
+      }><strong>${s.name}</strong><span>${s.blurb}</span></button></li>`
+    )
+    .join("");
+  if (mobileList) mobileList.innerHTML = htmlMobile;
+  if (deskList) deskList.innerHTML = htmlDesk;
   $$("[data-place]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.place === place ? "true" : "false"));
   $$("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === agentMode ? "true" : "false"));
   updateHome();
 }
 
 function renderFiles() {
-  $("#file-list").innerHTML = (filesByLens[lens] || [])
+  const html = (filesByLens[lens] || [])
     .map((f) => `<li>${f.name}<small>${f.meta}</small></li>`)
     .join("");
-  $$("#lens-row button").forEach((b) => b.setAttribute("aria-selected", b.dataset.lens === lens ? "true" : "false"));
+  const mobile = $("#file-list");
+  const desk = $("#desk-file-list");
+  if (mobile) mobile.innerHTML = html;
+  if (desk) desk.innerHTML = html;
+  $$("[data-lens]").forEach((b) => b.setAttribute("aria-selected", b.dataset.lens === lens ? "true" : "false"));
 }
 
 function renderSkills() {
@@ -126,13 +189,16 @@ function renderSkills() {
     ["O-Notation", "81%"],
   ]
     .map(
-      ([n, w]) => `<div class="skill"><div style="display:flex;justify-content:space-between"><span>${n}</span><span style="color:var(--muted)">${w}</span></div><div class="bar"><i style="--w:${w}"></i></div></div>`
+      ([n, w]) =>
+        `<div class="skill"><div style="display:flex;justify-content:space-between"><span>${n}</span><span style="color:var(--muted)">${w}</span></div><div class="bar"><i style="--w:${w}"></i></div></div>`
     )
     .join("");
 }
 
 function setDots(activeCount) {
-  $("#focus-dots").innerHTML = [0, 1, 2, 3].map((i) => `<i class="${i < activeCount ? "on" : ""}"></i>`).join("");
+  $("#focus-dots").innerHTML = [0, 1, 2, 3]
+    .map((i) => `<i class="${i < activeCount ? "on" : ""}"></i>`)
+    .join("");
 }
 
 function insertBST(node, value) {
@@ -170,12 +236,15 @@ function treeSvg() {
       lines += `<line x1="${p.x}" y1="${p.y}" x2="${c.x}" y2="${c.y}" stroke="#9aaca6"/>`;
     }
   }
-  const nodes = pts
-    .map(
-      (p) => `<g><circle cx="${p.x}" cy="${p.y}" r="15" fill="#0f6b6b"/><text x="${p.x}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="12" font-family="Sora,sans-serif" font-weight="600">${p.v}</text></g>`
-    )
-    .join("");
-  return lines + nodes;
+  return (
+    lines +
+    pts
+      .map(
+        (p) =>
+          `<g><circle cx="${p.x}" cy="${p.y}" r="15" fill="#0f6b6b"/><text x="${p.x}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="12" font-family="Sora,sans-serif" font-weight="600">${p.v}</text></g>`
+      )
+      .join("")
+  );
 }
 
 function paintTrees() {
@@ -186,12 +255,7 @@ function paintTrees() {
 
 function stateJson() {
   return JSON.stringify(
-    {
-      type: "binary_tree",
-      goal: "insert 7 and 3",
-      tree,
-      learner_actions: actions,
-    },
+    { type: "binary_tree", goal: "insert 7 and 3", tree, learner_actions: actions },
     null,
     2
   );
@@ -210,101 +274,117 @@ function renderKatex(root = document) {
   });
 }
 
-/** Staged session: only current step visible */
+/** Present step: mobile stacks; desktop splits artifact into right rail */
+function present({ dots, agent, footer, artifact = null }) {
+  setDots(dots);
+  const desk = isDesktop();
+  if (desk && artifact) {
+    $("#focus-stage").innerHTML = agent;
+    $("#desk-rail").innerHTML = artifact;
+    $("#desk-rail").dataset.state = "active";
+  } else if (desk) {
+    $("#focus-stage").innerHTML = agent;
+    $("#desk-rail").innerHTML = idleRail();
+    $("#desk-rail").dataset.state = "idle";
+  } else {
+    $("#focus-stage").innerHTML = agent + (artifact || "");
+  }
+  $("#focus-footer").innerHTML = footer;
+  paintTrees();
+  renderKatex($("#focus-stage"));
+  updateLayoutAttr();
+}
+
 const steps = [
   {
-    // 0 brief
     dots: 1,
     render() {
-      const hint =
+      const agent =
         agentMode === "examiner"
           ? `<div class="step-agent"><p>Examiner-Modus. Keine Tipps.</p><p>Aufgabe: Füge <strong>7</strong> und <strong>3</strong> in den Baum ein.</p></div>`
           : `<div class="step-agent">
               <p>Kurz und klar: Wir üben <strong>BST-Insert</strong>.</p>
               <p>Ziel: <strong>7</strong> und <strong>3</strong> korrekt einfügen. Alles andere später.</p>
             </div>`;
-      $("#focus-stage").innerHTML = hint;
-      $("#focus-footer").innerHTML = `<button class="btn btn-primary" type="button" data-next>Weiter zur Aufgabe</button>
-        ${agentMode === "tutor" ? `<button class="hint-link" type="button" data-show-formula>Formel kurz zeigen</button>` : ""}`;
+      present({
+        dots: 1,
+        agent,
+        footer: `<button class="btn btn-primary" type="button" data-next>Weiter zur Aufgabe</button>
+          ${agentMode === "tutor" ? `<button class="hint-link" type="button" data-show-formula>Formel kurz zeigen</button>` : ""}`,
+        artifact: null,
+      });
     },
   },
   {
-    // 1 work on artifact
     dots: 2,
     render() {
-      $("#focus-stage").innerHTML = `
-        <div class="step-agent"><p>Arbeit am Artefakt. Der Agent liest denselben State — du musst ihn nicht sehen.</p></div>
-        <div class="artifact-simple">
-          <h2>BST · einfügen</h2>
-          <svg class="tree-canvas" viewBox="0 0 320 170" role="img" aria-label="Binärbaum"></svg>
-          <div class="actions">
-            <button class="btn btn-mono" type="button" data-insert="7">insert(7)</button>
-            <button class="btn btn-mono" type="button" data-insert="3">insert(3)</button>
-            <button class="btn btn-mono" type="button" data-insert="9">insert(9)</button>
-          </div>
-        </div>`;
-      paintTrees();
-      $("#focus-footer").innerHTML = `
-        <button class="btn btn-primary" type="button" data-check>Prüfen</button>
-        <button class="btn btn-ghost" type="button" data-ask>Frage stellen…</button>`;
+      present({
+        dots: 2,
+        agent: `<div class="step-agent"><p>${
+          isDesktop()
+            ? "Arbeit rechts im Workspace. Ich lese denselben State — du musst ihn nicht öffnen."
+            : "Arbeit am Artefakt. Der Agent liest denselben State — du musst ihn nicht sehen."
+        }</p></div>`,
+        footer: `<button class="btn btn-primary" type="button" data-check>Prüfen</button>
+          <button class="btn btn-ghost" type="button" data-ask>Frage stellen…</button>`,
+        artifact: artifactHtml(true),
+      });
     },
   },
   {
-    // 2 feedback / optional timer
     dots: 3,
     render() {
       const ok = contains(tree, 7) && contains(tree, 3);
-      $("#focus-stage").innerHTML = `
-        <div class="feedback ${ok ? "" : "bad"}">
-          ${
-            ok
-              ? "Passt. 7 und 3 sitzen richtig. Als Nächstes eine kurze Retrieval-Frage — ohne Baum."
-              : "Noch nicht vollständig. Geh einen Schritt zurück und füge die fehlenden Werte ein."
-          }
-        </div>
-        <div class="artifact-simple">
-          <svg class="tree-canvas" viewBox="0 0 320 170"></svg>
-        </div>`;
-      paintTrees();
-      $("#focus-footer").innerHTML = ok
-        ? `<button class="btn btn-primary" type="button" data-next>Weiter · Retrieval</button>`
-        : `<button class="btn btn-primary" type="button" data-back>Zurück zur Aufgabe</button>`;
+      present({
+        dots: 3,
+        agent: `<div class="feedback ${ok ? "" : "bad"}">${
+          ok
+            ? "Passt. 7 und 3 sitzen richtig. Als Nächstes eine kurze Retrieval-Frage — ohne Baum."
+            : "Noch nicht vollständig. Geh einen Schritt zurück und füge die fehlenden Werte ein."
+        }</div>`,
+        footer: ok
+          ? `<button class="btn btn-primary" type="button" data-next>Weiter · Retrieval</button>`
+          : `<button class="btn btn-primary" type="button" data-back>Zurück zur Aufgabe</button>`,
+        artifact: artifactHtml(false),
+      });
     },
   },
   {
-    // 3 retrieval
     dots: 4,
     render() {
-      $("#focus-stage").innerHTML = `
-        <div class="step-agent"><p>Ohne Notizen: Welche Traversierung liefert die <strong>sortierte</strong> Folge eines BST?</p></div>
-        <div class="go-choices">
-          <button class="btn" type="button" data-quiz="pre">Preorder</button>
-          <button class="btn" type="button" data-quiz="in">Inorder</button>
-          <button class="btn" type="button" data-quiz="post">Postorder</button>
-        </div>`;
-      $("#focus-footer").innerHTML = "";
+      present({
+        dots: 4,
+        agent: `<div class="step-agent"><p>Ohne Notizen: Welche Traversierung liefert die <strong>sortierte</strong> Folge eines BST?</p></div>
+          <div class="go-choices">
+            <button class="btn" type="button" data-quiz="pre">Preorder</button>
+            <button class="btn" type="button" data-quiz="in">Inorder</button>
+            <button class="btn" type="button" data-quiz="post">Postorder</button>
+          </div>`,
+        footer: "",
+        artifact: null,
+      });
     },
   },
   {
-    // 4 reflect / done
     dots: 4,
     render() {
-      $("#focus-stage").innerHTML = `
-        <div class="step-agent">
-          <p>Session zu Ende. Gut gemacht.</p>
-          <p>Dein learner-model wird um diese Übung ergänzt. Details und Dateien findest du unter <strong>Mehr</strong> — nicht hier.</p>
-        </div>
-        <div class="event">Reflexion gespeichert (Demo)</div>`;
-      $("#focus-footer").innerHTML = `<button class="btn btn-primary" type="button" data-go-home>Zurück zu Heute</button>`;
+      present({
+        dots: 4,
+        agent: `<div class="step-agent">
+            <p>Session zu Ende. Gut gemacht.</p>
+            <p>Dein learner-model wird ergänzt. Dateien und Stats bleiben außerhalb vom Fokus.</p>
+          </div>
+          <div class="event">Reflexion gespeichert (Demo)</div>`,
+        footer: `<button class="btn btn-primary" type="button" data-go-home>Zurück zu Heute</button>`,
+        artifact: null,
+      });
     },
   },
 ];
 
 function goStep(i) {
   step = Math.max(0, Math.min(steps.length - 1, i));
-  setDots(steps[step].dots);
   steps[step].render();
-  renderKatex($("#focus-stage"));
 }
 
 function startSession() {
@@ -354,6 +434,16 @@ function startGo() {
     </div>`;
 }
 
+function setFilesOpen(open) {
+  filesOpen = open;
+  const panel = $("#desk-files");
+  const btn = $("#toggle-files");
+  if (!panel || !btn) return;
+  panel.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  btn.textContent = open ? "verbergen" : "zeigen";
+}
+
 function wire() {
   $("#start-session").addEventListener("click", startSession);
   $("#start-go").addEventListener("click", startGo);
@@ -362,9 +452,15 @@ function wire() {
   $("#menu-backdrop").addEventListener("click", closeMenu);
   $("#sheet-close").addEventListener("click", closeSheet);
   $("#sheet-backdrop").addEventListener("click", closeSheet);
+  $("#toggle-files")?.addEventListener("click", () => setFilesOpen(!filesOpen));
+
+  window.addEventListener("resize", () => {
+    updateLayoutAttr();
+    if (screen === "focus") steps[step].render();
+  });
 
   document.addEventListener("click", (e) => {
-    if (e.target.closest("[data-go-home]") || e.target.closest('[data-open="home"]')) {
+    if (e.target.closest("[data-go-home]")) {
       showScreen("home");
       return;
     }
@@ -395,6 +491,7 @@ function wire() {
       subjectId = pick.dataset.pickSubject;
       renderSubjects();
       toast(subject().name);
+      if (screen === "focus") goStep(step);
       return;
     }
 
@@ -443,8 +540,7 @@ function wire() {
         `<div class="composer" style="margin-top:.25rem">
           <textarea id="ask-input" rows="2" placeholder="Eine Frage…"></textarea>
           <button class="send" type="button" id="ask-send" aria-label="Senden">→</button>
-        </div>
-        <p style="color:var(--muted);font-size:.82rem;margin:.75rem 0 0">Im Fokus bleibt die Aufgabe. Der Chat ist Absicht zweitrangig.</p>`
+        </div>`
       );
       return;
     }
@@ -470,10 +566,14 @@ function wire() {
     const quiz = e.target.closest("[data-quiz]");
     if (quiz) {
       const ok = quiz.dataset.quiz === "in";
-      $("#focus-stage").innerHTML = `<div class="feedback ${ok ? "" : "bad"}">${
-        ok ? "Genau — Inorder." : "Nicht ganz. Richtig wäre Inorder."
-      }</div>`;
-      $("#focus-footer").innerHTML = `<button class="btn btn-primary" type="button" data-next>Abschluss</button>`;
+      present({
+        dots: 4,
+        agent: `<div class="feedback ${ok ? "" : "bad"}">${
+          ok ? "Genau — Inorder." : "Nicht ganz. Richtig wäre Inorder."
+        }</div>`,
+        footer: `<button class="btn btn-primary" type="button" data-next>Abschluss</button>`,
+        artifact: null,
+      });
       return;
     }
 
@@ -515,9 +615,14 @@ function wire() {
       }
       if (act === "state") openSheet("Agent-State", `<pre>${stateJson()}</pre>`);
       if (act === "files") {
-        showScreen("more");
-        const d = $$(".more-details")[0];
-        if (d) d.open = true;
+        if (isDesktop()) {
+          setFilesOpen(true);
+          toast("Dateien in der Seitenleiste");
+        } else {
+          showScreen("more");
+          const d = $$(".more-details.mobile-only")[0];
+          if (d) d.open = true;
+        }
       }
       return;
     }
@@ -557,7 +662,6 @@ function wire() {
           goStep(ok ? 2 : 1);
         }
       }, 1000);
-      return;
     }
   });
 }
@@ -567,6 +671,7 @@ function boot() {
   renderFiles();
   renderSkills();
   updateHome();
+  setFilesOpen(false);
   showScreen("home");
   wire();
   const w = setInterval(() => {

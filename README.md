@@ -22,6 +22,15 @@ Lern-UI nach **Progressive Disclosure** (NN/g): nur zeigen, was jetzt dran ist. 
 2. **Session** — gestufte Schritte (Briefing → Artefakt → Feedback → Retrieval → Ende)  
 3. **Mehr** — Lernort, Fach, Dateien, Übersicht (bewusst außerhalb vom Fokus)
 
+### Adaptiv: Mobil ≠ Desktop (gleiche App)
+
+| | Mobil (&lt;1100px) | Desktop (≥1100px) |
+|--|------------------|-------------------|
+| Layout | Ein Spalten-Flow | Cursor-Shell: Nav · Session · Workspace |
+| Artefakt | Im Schritt gestapelt | Rechte Spalte, nur wenn nötig |
+| Dateien | Unter „Mehr“ | Linke Leiste, standardmäßig verborgen |
+| Prinzip | Sequentiell (Zeit) | Parallel (Raum), trotzdem ruhig |
+
 ### Ansehen
 
 ```bash
