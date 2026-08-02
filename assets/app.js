@@ -1,4 +1,4 @@
-/* Atrium — Cursor-like explorer + LaTeX artifacts */
+/* Atrium — classic chat + Artefakt/Dateien tabs + LaTeX */
 
 const places = {
   schule: {
@@ -25,7 +25,6 @@ const places = {
   },
 };
 
-/** Explorer folders — like a project tree, not parallel to subjects */
 const treeFolders = [
   {
     id: "heute",
@@ -80,14 +79,9 @@ const BST_INVARIANT = "\\forall y\\in\\mathrm{left}(x):\\, y < x \\quad\\wedge\\
 let place = "studium";
 let subjectId = "informatik";
 let agentMode = "tutor";
-let activity = "explorer";
-let step = 0;
-let screen = "home";
 let tree = { v: 5, l: null, r: null };
-let timerId = null;
-let timerLeft = 300;
-let note = `BST: links < Knoten < rechts
-Heute: Insert üben`;
+let artifactOpen = false;
+let awaitingQuiz = null; // 'traversal' | null
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -108,8 +102,15 @@ function toast(msg) {
   toast._t = setTimeout(() => el.classList.remove("show"), 2200);
 }
 
-/* ——— LaTeX as artifact source of truth ——— */
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
 
+/* ——— LaTeX tree ——— */
 function tikzNode(node) {
   let s = `node {${node.v}}`;
   if (node.l) s += ` child { ${tikzNode(node.l)} }`;
@@ -117,13 +118,11 @@ function tikzNode(node) {
   return s;
 }
 
-/** Canonical agent-readable representation */
 function treeToLatex(root = tree) {
   return [
     "\\begin{tikzpicture}[",
     "  every node/.style={circle, draw=teal!60!black, fill=teal!8,",
-    "    minimum size=7mm, inner sep=1pt, font=\\sffamily\\bfseries\\small},",
-    "  edge from parent/.style={draw=black!40, thick},",
+    "    minimum size=7mm, font=\\sffamily\\bfseries\\small},",
     "  level distance=12mm, sibling distance=18mm",
     "]",
     `\\${tikzNode(root)};`,
@@ -152,7 +151,6 @@ function layout(node, x, y, gap, out = []) {
   return out;
 }
 
-/** Fast preview SVG — visual only; agent reads LaTeX */
 function previewSvg() {
   const pts = layout(tree, 160, 32, 68);
   const map = Object.fromEntries(pts.map((p) => [p.v, p]));
@@ -173,85 +171,142 @@ function previewSvg() {
         `<g><circle cx="${p.x}" cy="${p.y}" r="15" fill="#0f6b6b"/><text x="${p.x}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="12" font-family="Sora,sans-serif" font-weight="600">${p.v}</text></g>`
     )
     .join("");
-  return `<svg class="tree-canvas" viewBox="0 0 320 170" role="img" aria-label="BST-Vorschau">${lines}${nodes}</svg>`;
+  return `<svg class="tree-canvas" viewBox="0 0 320 170">${lines}${nodes}</svg>`;
 }
 
-function renderTikzHosts() {
-  const latex = treeToLatex();
-  $$(".latex-src").forEach((el) => {
-    el.textContent = latex;
-  });
-  $$(".tikz-host").forEach((host) => {
-    // Live preview (snappy). TikZJax can replace when available.
-    host.innerHTML = previewSvg();
-    const script = document.createElement("script");
-    script.type = "text/tikz";
-    script.textContent = latex;
-    // Keep preview; TikZJax replaces script tags — append after preview for engines that swap script→svg
-    // If TikZJax runs, it may leave preview; we prefer preview for interaction speed.
-    host.dataset.latex = latex;
-  });
-}
-
-function artifactHtml(withActions = true) {
-  return `<div class="artifact-simple">
+function renderArtifactPane() {
+  const pane = $("#artifact-pane");
+  if (!artifactOpen) {
+    pane.innerHTML = `<div class="rail-idle">
+      <p class="desk-label">Kein Artefakt</p>
+      <p class="rail-idle-text">Wenn der Agent eine Aufgabe öffnet, erscheint sie hier — als LaTeX/TikZ.</p>
+    </div>`;
+    return;
+  }
+  pane.innerHTML = `<div class="artifact-simple">
     <h2>BST · einfügen</h2>
-    <div class="tikz-host" aria-label="Grafik aus LaTeX"></div>
-    ${
-      withActions
-        ? `<div class="actions">
+    <div class="tikz-host">${previewSvg()}</div>
+    <div class="actions">
       <button class="btn btn-mono" type="button" data-insert="7">insert(7)</button>
       <button class="btn btn-mono" type="button" data-insert="3">insert(3)</button>
       <button class="btn btn-mono" type="button" data-insert="9">insert(9)</button>
-    </div>`
-        : ""
-    }
+      <button class="btn btn-primary" type="button" data-check-artifact>Prüfen</button>
+    </div>
     <div class="src-label">LaTeX · Agent-State</div>
-    <pre class="latex-src"></pre>
+    <pre class="latex-src">${escapeHtml(treeToLatex())}</pre>
   </div>`;
 }
 
-function idleRail() {
-  return `<div class="rail-idle">
-    <p class="desk-label">Workspace</p>
-    <p class="rail-idle-text">Artefakte als LaTeX/TikZ erscheinen hier, wenn die Session sie braucht.</p>
-  </div>`;
+/* ——— Chat helpers ——— */
+
+/** Render $...$ and $$...$$ in HTML text to KaTeX placeholders */
+function formatAgentHtml(text) {
+  // Already HTML fragments may include tags — only process plain segments carefully.
+  // For our seeded messages we pass HTML with .tex nodes; for user-facing agent strings use this.
+  let html = escapeHtml(text);
+  html = html.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => `<div class="tex block" data-tex="${escapeHtml(tex.trim())}"></div>`);
+  html = html.replace(/\$([^$\n]+?)\$/g, (_, tex) => `<span class="tex" data-tex="${escapeHtml(tex.trim())}"></span>`);
+  html = html.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>");
+  return `<p>${html}</p>`;
 }
 
-function updateLayoutAttr() {
-  const app = $("#app");
-  if (!isDesktop()) {
-    app.removeAttribute("data-layout");
-    return;
-  }
-  if (screen === "focus") {
-    app.dataset.layout = step === 1 || step === 2 ? "focus" : "focus-idle";
-  } else {
-    app.dataset.layout = "browse";
+function renderKatex(root = document) {
+  if (!window.katex) return;
+  root.querySelectorAll(".tex").forEach((el) => {
+    if (el.dataset.done) return;
+    try {
+      katex.render(el.dataset.tex, el, {
+        displayMode: el.classList.contains("block"),
+        throwOnError: false,
+      });
+      el.dataset.done = "1";
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+function scrollChat() {
+  const stream = $("#chat-stream");
+  stream.scrollTop = stream.scrollHeight;
+}
+
+function appendEvent(text) {
+  $("#chat-stream").insertAdjacentHTML("beforeend", `<div class="event-chip">${escapeHtml(text)}</div>`);
+  scrollChat();
+}
+
+function appendUser(text) {
+  $("#chat-stream").insertAdjacentHTML(
+    "beforeend",
+    `<article class="msg msg-user"><div class="msg-label">Du</div><div class="bubble">${escapeHtml(text)}</div></article>`
+  );
+  scrollChat();
+}
+
+function appendAgent(innerHtml) {
+  const name = subject().name;
+  const mode = agentMode === "tutor" ? "Tutor" : "Examiner";
+  $("#chat-stream").insertAdjacentHTML(
+    "beforeend",
+    `<article class="msg msg-agent"><div class="msg-label">${name}-Agent · ${mode}</div><div class="bubble">${innerHtml}</div></article>`
+  );
+  renderKatex($("#chat-stream"));
+  scrollChat();
+}
+
+function setSideTab(name) {
+  $$(".side-tab[data-side-tab]").forEach((t) =>
+    t.setAttribute("aria-selected", t.dataset.sideTab === name ? "true" : "false")
+  );
+  $$(".side-pane").forEach((p) => {
+    const on = p.dataset.pane === name;
+    p.classList.toggle("is-active", on);
+    p.hidden = !on;
+  });
+}
+
+function openSideMobile() {
+  $("#side-column").classList.add("is-open-mobile");
+}
+
+function closeSideMobile() {
+  $("#side-column").classList.remove("is-open-mobile");
+}
+
+function setAppMode(mode) {
+  // mode: 'browse' | 'chat'
+  $("#app").dataset.mode = mode;
+  $$(".act-btn[data-screen-btn]").forEach((b) =>
+    b.setAttribute("aria-pressed", b.dataset.screenBtn === (mode === "chat" ? "chat" : mode) ? "true" : "false")
+  );
+  if (mode === "chat") {
+    closeOverlay();
   }
 }
 
-function showScreen(name) {
-  screen = name;
+function showOverlay(name) {
+  setAppMode("browse");
   $$(".screen").forEach((el) => el.classList.toggle("is-active", el.dataset.screen === name));
-  closeMenu();
-  closeSheet();
-  updateLayoutAttr();
-  if (name !== "focus") {
-    $("#desk-rail").innerHTML = idleRail();
-    $("#desk-rail").dataset.state = "idle";
+  $$(".act-btn[data-screen-btn]").forEach((b) =>
+    b.setAttribute("aria-pressed", b.dataset.screenBtn === name || (name === "home" && b.dataset.screenBtn === "chat" && false) ? "true" : "false")
+  );
+  if (name === "progress") {
+    $$('.act-btn[data-screen-btn="progress"]').forEach((b) => b.setAttribute("aria-pressed", "true"));
+    $$('.act-btn[data-screen-btn="chat"]').forEach((b) => b.setAttribute("aria-pressed", "false"));
   }
 }
 
-function updateHome() {
+function closeOverlay() {
+  $$(".screen").forEach((el) => el.classList.remove("is-active"));
+}
+
+function updateChrome() {
   const s = subject();
+  $("#workspace-label").textContent = `${places[place].label} / ${s.name}`;
   $("#home-place").textContent = places[place].label;
   $("#next-title").textContent = `${s.name} · ${s.next}`;
-  $("#next-meta").textContent = whyText[s.id] || "Aus deinem aktuellen Lernstand abgeleitet.";
-  $("#focus-title").textContent = s.name;
-  const label = `${places[place].label} / ${s.name}`;
-  const chip = $("#workspace-label");
-  if (chip) chip.textContent = label;
+  $("#next-meta").textContent = whyText[s.id] || "Aus deinem Lernstand.";
 }
 
 function renderSubjects() {
@@ -262,18 +317,17 @@ function renderSubjects() {
       }><strong>${s.name}</strong><span>${s.blurb}</span></button></li>`
     )
     .join("");
-  const mobile = $("#subject-picks");
   const desk = $("#desk-subjects");
-  if (mobile) mobile.innerHTML = html;
+  const mobile = $("#subject-picks");
   if (desk) desk.innerHTML = html;
+  if (mobile) mobile.innerHTML = html;
   $$("[data-place]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.place === place ? "true" : "false"));
   $$("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === agentMode ? "true" : "false"));
-  updateHome();
-  renderFileTree();
+  updateChrome();
 }
 
 function renderFileTree() {
-  const html = treeFolders
+  $("#file-tree").innerHTML = treeFolders
     .map(
       (f) => `<li class="folder" data-folder="${f.id}" data-open="${f.open ? "true" : "false"}">
       <button type="button" class="folder-label" data-toggle-folder="${f.id}">
@@ -290,17 +344,13 @@ function renderFileTree() {
     </li>`
     )
     .join("");
-  const desk = $("#file-tree");
-  const mobile = $("#file-tree-mobile");
-  if (desk) desk.innerHTML = html;
-  if (mobile) mobile.innerHTML = html;
 }
 
 function renderSkills() {
-  const stats = `
+  $("#stats-mini").innerHTML = `
     <div><small>Heute</small><strong>42 min</strong></div>
     <div><small>Readiness</small><strong>68%</strong></div>`;
-  const skills = [
+  $("#skill-list").innerHTML = [
     ["Binäre Suchbäume", "72%"],
     ["Inorder / Preorder", "54%"],
     ["O-Notation", "81%"],
@@ -310,244 +360,269 @@ function renderSkills() {
         `<div class="skill"><div style="display:flex;justify-content:space-between"><span>${n}</span><span style="color:var(--muted)">${w}</span></div><div class="bar"><i style="--w:${w}"></i></div></div>`
     )
     .join("");
-  const a = $("#stats-mini");
-  const b = $("#skill-list");
-  const c = $("#desk-stats");
-  const d = $("#desk-skills");
-  if (a) a.innerHTML = stats;
-  if (b) b.innerHTML = skills;
-  if (c) c.innerHTML = stats;
-  if (d) d.innerHTML = skills;
-}
-
-function setActivity(name) {
-  activity = name;
-  $$(".act-btn[data-activity]").forEach((b) =>
-    b.setAttribute("aria-pressed", b.dataset.activity === name ? "true" : "false")
-  );
-  $$(".side-view").forEach((v) => {
-    const on = v.dataset.sideView === name;
-    v.classList.toggle("is-active", on);
-    v.hidden = !on;
-  });
-}
-
-function setDots(n) {
-  $("#focus-dots").innerHTML = [0, 1, 2, 3].map((i) => `<i class="${i < n ? "on" : ""}"></i>`).join("");
-}
-
-function renderKatex(root = document) {
-  if (!window.katex) return;
-  root.querySelectorAll(".tex").forEach((el) => {
-    if (el.dataset.done) return;
-    try {
-      katex.render(el.dataset.tex, el, { displayMode: el.classList.contains("block"), throwOnError: false });
-      el.dataset.done = "1";
-    } catch {
-      /* ignore */
-    }
-  });
-}
-
-function present({ dots, agent, footer, artifact = null }) {
-  setDots(dots);
-  const desk = isDesktop();
-  if (desk && artifact) {
-    $("#focus-stage").innerHTML = agent;
-    $("#desk-rail").innerHTML = artifact;
-    $("#desk-rail").dataset.state = "active";
-  } else if (desk) {
-    $("#focus-stage").innerHTML = agent;
-    $("#desk-rail").innerHTML = idleRail();
-    $("#desk-rail").dataset.state = "idle";
-  } else {
-    $("#focus-stage").innerHTML = agent + (artifact || "");
-  }
-  $("#focus-footer").innerHTML = footer;
-  if (artifact) renderTikzHosts();
-  renderKatex($("#focus-stage"));
-  updateLayoutAttr();
-}
-
-const steps = [
-  {
-    render() {
-      const agent =
-        agentMode === "examiner"
-          ? `<div class="step-agent"><p>Examiner-Modus. Keine Tipps.</p><p>Aufgabe: Füge <strong>7</strong> und <strong>3</strong> in den Baum ein.</p></div>`
-          : `<div class="step-agent">
-              <p>Kurz und klar: Wir üben <strong>BST-Insert</strong>.</p>
-              <p>Ziel: <strong>7</strong> und <strong>3</strong> korrekt einfügen. Darstellung &amp; Agent-State: <strong>LaTeX/TikZ</strong>.</p>
-            </div>`;
-      present({
-        dots: 1,
-        agent,
-        footer: `<button class="btn btn-primary" type="button" data-next>Weiter zur Aufgabe</button>
-          ${agentMode === "tutor" ? `<button class="hint-link" type="button" data-show-formula>Formel (LaTeX)</button>` : ""}`,
-      });
-    },
-  },
-  {
-    render() {
-      present({
-        dots: 2,
-        agent: `<div class="step-agent"><p>${
-          isDesktop()
-            ? "Rechts: TikZ-Vorschau + LaTeX-Quelle. Der Agent liest den LaTeX-Quelltext — kein Custom-JSON."
-            : "Unten: Grafik + LaTeX-Quelle. Der Agent liest LaTeX, nicht ein Eigenformat."
-        }</p></div>`,
-        footer: `<button class="btn btn-primary" type="button" data-check>Prüfen</button>
-          <button class="btn btn-ghost" type="button" data-ask>Frage stellen…</button>`,
-        artifact: artifactHtml(true),
-      });
-    },
-  },
-  {
-    render() {
-      const ok = contains(tree, 7) && contains(tree, 3);
-      present({
-        dots: 3,
-        agent: `<div class="feedback ${ok ? "" : "bad"}">${
-          ok
-            ? "Passt. Die LaTeX-Quelle enthält 7 und 3 korrekt. Weiter: Retrieval ohne Baum."
-            : "Noch unvollständig — fehlende Werte in der LaTeX-Quelle."
-        }</div>`,
-        footer: ok
-          ? `<button class="btn btn-primary" type="button" data-next>Weiter · Retrieval</button>`
-          : `<button class="btn btn-primary" type="button" data-back>Zurück zur Aufgabe</button>`,
-        artifact: artifactHtml(false),
-      });
-    },
-  },
-  {
-    render() {
-      present({
-        dots: 4,
-        agent: `<div class="step-agent"><p>Ohne Notizen: Welche Traversierung liefert die <strong>sortierte</strong> Folge eines BST?</p></div>
-          <div class="go-choices">
-            <button class="btn" type="button" data-quiz="pre">Preorder</button>
-            <button class="btn" type="button" data-quiz="in">Inorder</button>
-            <button class="btn" type="button" data-quiz="post">Postorder</button>
-          </div>`,
-        footer: "",
-      });
-    },
-  },
-  {
-    render() {
-      present({
-        dots: 4,
-        agent: `<div class="step-agent">
-            <p>Session zu Ende. Gut gemacht.</p>
-            <p>Learner-model wird ergänzt. Explorer bleibt für Dateien — nicht für parallele Fächer-Listen.</p>
-          </div>
-          <div class="event">Reflexion gespeichert (Demo)</div>`,
-        footer: `<button class="btn btn-primary" type="button" data-go-home>Zurück zu Heute</button>`,
-      });
-    },
-  },
-];
-
-function goStep(i) {
-  step = Math.max(0, Math.min(steps.length - 1, i));
-  steps[step].render();
-}
-
-function startSession() {
-  tree = { v: 5, l: null, r: null };
-  clearInterval(timerId);
-  timerId = null;
-  timerLeft = 300;
-  showScreen("focus");
-  goStep(0);
-}
-
-function openMenu() {
-  $("#menu-sheet").hidden = false;
-  $("#menu-backdrop").hidden = false;
-  $("#focus-menu-btn").setAttribute("aria-expanded", "true");
-}
-
-function closeMenu() {
-  $("#menu-sheet").hidden = true;
-  $("#menu-backdrop").hidden = true;
-  $("#focus-menu-btn")?.setAttribute("aria-expanded", "false");
-}
-
-function openSheet(title, html) {
-  $("#sheet-title").textContent = title;
-  $("#sheet-body").innerHTML = html;
-  $("#sheet").hidden = false;
-  $("#sheet-backdrop").hidden = false;
-  renderKatex($("#sheet-body"));
-}
-
-function closeSheet() {
-  $("#sheet").hidden = true;
-  $("#sheet-backdrop").hidden = true;
-}
-
-function startGo() {
-  showScreen("go");
-  $("#go-body").innerHTML = `
-    <p class="eyebrow">Informatik</p>
-    <h2 class="go-q">Welche Traversierung sortiert einen BST?</h2>
-    <div class="go-choices">
-      <button class="btn" type="button" data-go-quiz="pre">Preorder</button>
-      <button class="btn" type="button" data-go-quiz="in">Inorder</button>
-      <button class="btn" type="button" data-go-quiz="post">Postorder</button>
-    </div>`;
 }
 
 function setWorkspaceMenu(open) {
-  const menu = $("#workspace-menu");
-  const chip = $("#workspace-chip");
-  if (!menu || !chip) return;
-  menu.hidden = !open;
-  chip.setAttribute("aria-expanded", open ? "true" : "false");
+  $("#workspace-menu").hidden = !open;
+  $("#workspace-chip").setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function seedChat() {
+  $("#chat-stream").innerHTML = "";
+  awaitingQuiz = null;
+  tree = { v: 5, l: null, r: null };
+  artifactOpen = false;
+  renderArtifactPane();
+
+  if (agentMode === "examiner") {
+    appendAgent(`<p>Examiner-Modus — keine Tipps.</p>
+      <p>Aufgabe: Füge <strong>7</strong> und <strong>3</strong> in den BST ein.</p>
+      <div class="artifact-card">
+        <strong>Artefakt · BST</strong>
+        <p>LaTeX/TikZ im rechten Panel.</p>
+        <button class="btn btn-primary" type="button" data-open-artifact>Artefakt öffnen</button>
+      </div>`);
+  } else {
+    appendAgent(`<p>Willkommen zurück. Laut <em>learner-model</em> üben wir <strong>BST-Insert</strong>.</p>
+      <p>Die Invariante:</p>
+      <div class="tex block" data-tex="${BST_INVARIANT}"></div>
+      <div class="artifact-card">
+        <strong>Artefakt · Binärbaum</strong>
+        <p>Shared State als LaTeX — rechts unter „Artefakt“.</p>
+        <button class="btn btn-primary" type="button" data-open-artifact>Artefakt öffnen</button>
+      </div>`);
+    appendEvent("System · Artefakt bereit");
+    appendAgent(`<p>Kurze Nachfrage, bevor wir starten:</p>
+      <p>Welche Traversierung liefert die <strong>sortierte</strong> Folge?</p>
+      <div class="chat-choices">
+        <button type="button" class="chat-choice" data-choice="pre">Preorder</button>
+        <button type="button" class="chat-choice" data-choice="in">Inorder</button>
+        <button type="button" class="chat-choice" data-choice="post">Postorder</button>
+      </div>`);
+    awaitingQuiz = "traversal";
+  }
+  renderKatex($("#chat-stream"));
+}
+
+function openArtifact() {
+  artifactOpen = true;
+  renderArtifactPane();
+  setSideTab("artifact");
+  if (!isDesktop()) openSideMobile();
+  appendEvent("Artefakt geöffnet · LaTeX-State aktiv");
+}
+
+function handleChoice(value, btn) {
+  if (!awaitingQuiz) return;
+  const label = { pre: "Preorder", in: "Inorder", post: "Postorder" }[value];
+  appendUser(label);
+  $$(".chat-choice").forEach((b) => {
+    b.disabled = true;
+  });
+  if (awaitingQuiz === "traversal") {
+    const ok = value === "in";
+    appendAgent(
+      ok
+        ? `<p>Genau — <strong>Inorder</strong>. Dann legen wir mit dem Artefakt los.</p>
+           <div class="chat-choices">
+             <button type="button" class="chat-choice" data-open-artifact>Artefakt öffnen</button>
+             <button type="button" class="chat-choice" data-ask-formula>Nochmal Formel</button>
+           </div>`
+        : `<p>Nicht ganz. Die sortierte Folge kommt von <strong>Inorder</strong>.</p>
+           <div class="chat-choices">
+             <button type="button" class="chat-choice" data-open-artifact>Trotzdem Artefakt öffnen</button>
+           </div>`
+    );
+    awaitingQuiz = null;
+  }
+}
+
+function agentReplyToUser(text) {
+  const lower = text.toLowerCase();
+  if (lower.includes("formel") || lower.includes("invariante") || lower.includes("latex")) {
+    appendAgent(`<p>BST-Invariante (LaTeX):</p>
+      <div class="tex block" data-tex="${BST_INVARIANT}"></div>
+      <div class="chat-choices">
+        <button type="button" class="chat-choice" data-open-artifact>Zum Artefakt</button>
+      </div>`);
+    return;
+  }
+  if (lower.includes("prüfung") || lower.includes("check") || lower.includes("fertig")) {
+    const ok = contains(tree, 7) && contains(tree, 3);
+    appendAgent(
+      ok
+        ? `<p>LaTeX-State sieht gut aus — 7 und 3 sind drin.</p>
+           <div class="chat-choices">
+             <button type="button" class="chat-choice" data-choice-next="retrieval">Retrieval-Frage</button>
+           </div>`
+        : `<p>Noch unvollständig. Nutze <code>insert(7)</code> und <code>insert(3)</code> im Artefakt-Tab.</p>
+           <div class="chat-choices">
+             <button type="button" class="chat-choice" data-open-artifact>Artefakt zeigen</button>
+           </div>`
+    );
+    return;
+  }
+  if (agentMode === "examiner") {
+    appendAgent(`<p>Notiert. Weiter am Artefakt — ohne Hinweise.</p>`);
+    return;
+  }
+  appendAgent(`<p>Verstanden. Du kannst im Chat nachfragen oder rechts am Artefakt arbeiten.</p>
+    <div class="chat-choices">
+      <button type="button" class="chat-choice" data-open-artifact>Artefakt</button>
+      <button type="button" class="chat-choice" data-ask-formula>Formel zeigen</button>
+      <button type="button" class="chat-choice" data-side-files>Dateien</button>
+    </div>`);
+}
+
+function sendMessage() {
+  const input = $("#composer-input");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  appendUser(text);
+  agentReplyToUser(text);
+}
+
+function startSession() {
+  setAppMode("chat");
+  setSideTab("artifact");
+  closeSideMobile();
+  seedChat();
+  $$('.act-btn[data-screen-btn="chat"]').forEach((b) => b.setAttribute("aria-pressed", "true"));
+  $$('.act-btn[data-screen-btn="progress"]').forEach((b) => b.setAttribute("aria-pressed", "false"));
 }
 
 function wire() {
   $("#start-session").addEventListener("click", startSession);
-  $("#start-go").addEventListener("click", startGo);
-  $("#exit-focus").addEventListener("click", () => showScreen("home"));
-  $("#focus-menu-btn").addEventListener("click", openMenu);
-  $("#menu-backdrop").addEventListener("click", closeMenu);
-  $("#sheet-close").addEventListener("click", closeSheet);
-  $("#sheet-backdrop").addEventListener("click", closeSheet);
-
-  $("#workspace-chip")?.addEventListener("click", () => {
-    const open = $("#workspace-menu").hidden;
-    setWorkspaceMenu(open);
+  $("#new-chat").addEventListener("click", () => {
+    seedChat();
+    toast("Neuer Chat");
+  });
+  $("#send-btn").addEventListener("click", sendMessage);
+  $("#composer-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   });
 
-  window.addEventListener("resize", () => {
-    updateLayoutAttr();
-    if (screen === "focus") steps[step].render();
+  $("#workspace-chip").addEventListener("click", (e) => {
+    e.stopPropagation();
+    setWorkspaceMenu($("#workspace-menu").hidden);
+  });
+
+  $("#open-side-mobile")?.addEventListener("click", openSideMobile);
+  $("#close-side-mobile")?.addEventListener("click", closeSideMobile);
+
+  $("#start-go").addEventListener("click", () => {
+    showOverlay("go");
+    $("#go-body").innerHTML = `
+      <p class="eyebrow">Informatik</p>
+      <h2 class="go-q">Welche Traversierung sortiert einen BST?</h2>
+      <div class="go-choices">
+        <button class="btn" type="button" data-go-quiz="pre">Preorder</button>
+        <button class="btn" type="button" data-go-quiz="in">Inorder</button>
+        <button class="btn" type="button" data-go-quiz="post">Postorder</button>
+      </div>`;
   });
 
   document.addEventListener("click", (e) => {
-    const act = e.target.closest(".act-btn[data-activity]");
-    if (act) {
-      setActivity(act.dataset.activity);
-      return;
+    if (!e.target.closest("#workspace-chip") && !e.target.closest("#workspace-menu")) {
+      setWorkspaceMenu(false);
     }
 
     if (e.target.closest("[data-go-home]")) {
-      showScreen("home");
+      showOverlay("home");
       return;
     }
     if (e.target.closest('[data-open="more"]')) {
-      showScreen("more");
+      showOverlay("more");
+      return;
+    }
+
+    const screenBtn = e.target.closest("[data-screen-btn]");
+    if (screenBtn) {
+      const t = screenBtn.dataset.screenBtn;
+      if (t === "chat") {
+        if (!$("#chat-stream").children.length) startSession();
+        else setAppMode("chat");
+      } else if (t === "progress") showOverlay("progress");
+      return;
+    }
+
+    const tab = e.target.closest(".side-tab[data-side-tab]");
+    if (tab) {
+      setSideTab(tab.dataset.sideTab);
+      return;
+    }
+
+    if (e.target.closest("[data-open-artifact]")) {
+      openArtifact();
+      return;
+    }
+
+    if (e.target.closest("[data-ask-formula]")) {
+      appendAgent(`<p>Hier nochmal als LaTeX:</p><div class="tex block" data-tex="${BST_INVARIANT}"></div>`);
+      return;
+    }
+
+    if (e.target.closest("[data-side-files]")) {
+      setSideTab("files");
+      if (!isDesktop()) openSideMobile();
+      return;
+    }
+
+    const choice = e.target.closest("[data-choice]");
+    if (choice && !choice.disabled) {
+      handleChoice(choice.dataset.choice, choice);
+      return;
+    }
+
+    if (e.target.closest('[data-choice-next="retrieval"]')) {
+      awaitingQuiz = "traversal";
+      appendAgent(`<p>Retrieval: Welche Traversierung sortiert?</p>
+        <div class="chat-choices">
+          <button type="button" class="chat-choice" data-choice="pre">Preorder</button>
+          <button type="button" class="chat-choice" data-choice="in">Inorder</button>
+          <button type="button" class="chat-choice" data-choice="post">Postorder</button>
+        </div>`);
+      return;
+    }
+
+    const placeBtn = e.target.closest("[data-place]");
+    if (placeBtn) {
+      place = placeBtn.dataset.place;
+      subjectId = places[place].subjects[0].id;
+      renderSubjects();
+      if ($("#app").dataset.mode === "chat") seedChat();
+      toast(places[place].label);
+      return;
+    }
+
+    const modeBtn = e.target.closest("[data-mode]");
+    if (modeBtn) {
+      agentMode = modeBtn.dataset.mode;
+      renderSubjects();
+      if ($("#app").dataset.mode === "chat") seedChat();
+      toast(agentMode === "tutor" ? "Tutor" : "Examiner");
+      return;
+    }
+
+    const pick = e.target.closest("[data-pick-subject]");
+    if (pick) {
+      subjectId = pick.dataset.pickSubject;
+      renderSubjects();
+      setWorkspaceMenu(false);
+      if ($("#app").dataset.mode === "chat") seedChat();
+      toast(subject().name);
       return;
     }
 
     const folderBtn = e.target.closest("[data-toggle-folder]");
     if (folderBtn) {
-      const id = folderBtn.dataset.toggleFolder;
-      const folder = treeFolders.find((f) => f.id === id);
-      if (folder) {
-        folder.open = !folder.open;
+      const f = treeFolders.find((x) => x.id === folderBtn.dataset.toggleFolder);
+      if (f) {
+        f.open = !f.open;
         renderFileTree();
       }
       return;
@@ -558,99 +633,24 @@ function wire() {
       return;
     }
 
-    const placeBtn = e.target.closest("[data-place]");
-    if (placeBtn) {
-      place = placeBtn.dataset.place;
-      subjectId = places[place].subjects[0].id;
-      renderSubjects();
-      toast(places[place].label);
-      return;
-    }
-
-    const modeBtn = e.target.closest("[data-mode]");
-    if (modeBtn) {
-      agentMode = modeBtn.dataset.mode;
-      renderSubjects();
-      toast(agentMode === "tutor" ? "Tutor" : "Examiner");
-      return;
-    }
-
-    const pick = e.target.closest("[data-pick-subject]");
-    if (pick) {
-      subjectId = pick.dataset.pickSubject;
-      renderSubjects();
-      setWorkspaceMenu(false);
-      toast(subject().name);
-      if (screen === "focus") goStep(step);
-      return;
-    }
-
-    if (e.target.closest("[data-next]")) {
-      goStep(step + 1);
-      return;
-    }
-    if (e.target.closest("[data-back]")) {
-      goStep(1);
-      return;
-    }
-
-    if (e.target.closest("[data-show-formula]")) {
-      openSheet(
-        "Formel · LaTeX",
-        `<p>Quelle (KaTeX):</p>
-         <pre class="latex-src">${BST_INVARIANT}</pre>
-         <p style="margin:.75rem 0 .35rem">Gerendert:</p>
-         <div class="tex block" data-tex="${BST_INVARIANT}"></div>`
-      );
-      return;
-    }
-
     const ins = e.target.closest("[data-insert]");
     if (ins) {
       tree = insertBST(tree, Number(ins.dataset.insert));
-      renderTikzHosts();
-      toast(`LaTeX aktualisiert · insert(${ins.dataset.insert})`);
+      renderArtifactPane();
+      appendEvent(`Learner · insert(${ins.dataset.insert}) — LaTeX aktualisiert`);
       return;
     }
 
-    if (e.target.closest("[data-check]")) {
-      goStep(2);
-      return;
-    }
-
-    if (e.target.closest("[data-ask]")) {
-      openSheet(
-        "Kurz fragen",
-        `<div class="composer" style="margin-top:.25rem">
-          <textarea id="ask-input" rows="2" placeholder="Eine Frage…"></textarea>
-          <button class="send" type="button" id="ask-send" aria-label="Senden">→</button>
-        </div>`
+    if (e.target.closest("[data-check-artifact]")) {
+      const ok = contains(tree, 7) && contains(tree, 3);
+      appendAgent(
+        ok
+          ? `<p>Passt. Die LaTeX-Quelle enthält 7 und 3.</p>
+             <div class="chat-choices">
+               <button type="button" class="chat-choice" data-choice-next="retrieval">Weiter mit Retrieval</button>
+             </div>`
+          : `<p>Noch nicht vollständig — schau in die LaTeX-Quelle rechts.</p>`
       );
-      return;
-    }
-
-    if (e.target.closest("#ask-send")) {
-      const text = ($("#ask-input")?.value || "").trim();
-      if (!text) return;
-      closeSheet();
-      $("#focus-stage").insertAdjacentHTML(
-        "beforeend",
-        `<div class="chat-mini"><div class="bubble-you">${text.replace(/</g, "&lt;")}</div>
-        <div class="step-agent"><p>${
-          agentMode === "examiner" ? "Keine Erklärung im Examiner-Modus." : "Kurz: links kleiner, rechts größer."
-        }</p></div></div>`
-      );
-      return;
-    }
-
-    const quiz = e.target.closest("[data-quiz]");
-    if (quiz) {
-      const ok = quiz.dataset.quiz === "in";
-      present({
-        dots: 4,
-        agent: `<div class="feedback ${ok ? "" : "bad"}">${ok ? "Genau — Inorder." : "Nicht ganz. Richtig wäre Inorder."}</div>`,
-        footer: `<button class="btn btn-primary" type="button" data-next>Abschluss</button>`,
-      });
       return;
     }
 
@@ -658,87 +658,19 @@ function wire() {
     if (gq) {
       const ok = gq.dataset.goQuiz === "in";
       $("#go-body").innerHTML = `
-        <div class="feedback ${ok ? "" : "bad"}">${ok ? "Richtig. Kurz und gut." : "Fast — Inorder sortiert."}</div>
+        <div class="feedback ${ok ? "" : "bad"}">${ok ? "Richtig." : "Inorder wäre richtig."}</div>
         <button class="btn btn-primary" type="button" data-go-home>Fertig</button>`;
-      return;
-    }
-
-    const menu = e.target.closest("#menu-sheet [data-menu]");
-    if (menu) {
-      const actName = menu.dataset.menu;
-      closeMenu();
-      if (actName === "exit") showScreen("home");
-      if (actName === "why")
-        openSheet("Warum diese Aufgabe?", `<p>${whyText[subject().id] || "Aus deinem learner-model."}</p>`);
-      if (actName === "notes")
-        openSheet(
-          "Notiz",
-          `<textarea class="note-area" id="note-area">${note.replace(/</g, "&lt;")}</textarea>
-           <button class="btn btn-secondary" type="button" id="save-note" style="margin-top:.65rem;width:100%">Übernehmen</button>`
-        );
-      if (actName === "photo")
-        openSheet(
-          "Foto-Korrektur",
-          `<div class="photo-mock"><p>Foto laden (Demo)</p>
-           <button class="btn btn-secondary" type="button" id="sim-photo" style="margin-top:.5rem">Beispiel zeigen</button>
-           <div id="photo-out"></div></div>`
-        );
-      if (actName === "timer") {
-        openSheet(
-          "Timer",
-          `<div class="timer-big"><strong id="timer-display">05:00</strong><span>Bei Ablauf: LaTeX-State auswerten</span></div>
-           <button class="btn btn-primary" type="button" id="timer-start">Start</button>`
-        );
-      }
-      if (actName === "latex") openSheet("LaTeX · Agent-State", `<pre class="latex-src">${treeToLatex()}</pre>`);
-      return;
-    }
-
-    if (e.target.closest("#save-note")) {
-      note = $("#note-area")?.value || note;
-      closeSheet();
-      toast("Notiz gespeichert");
-      return;
-    }
-
-    if (e.target.closest("#sim-photo")) {
-      $("#photo-out").innerHTML = `<div class="paper-sheet">f(x)=x²+2x+1<br/>=(x+1)(x−1)?<span class="mark"></span></div>
-        <p style="margin:.65rem 0 0;font-size:.88rem">Korrektur (LaTeX): <span class="tex" data-tex="x^2+2x+1=(x+1)^2"></span></p>`;
-      renderKatex($("#photo-out"));
-      return;
-    }
-
-    if (e.target.closest("#timer-start")) {
-      clearInterval(timerId);
-      timerLeft = 300;
-      const tick = () => {
-        const m = String(Math.floor(timerLeft / 60)).padStart(2, "0");
-        const s = String(timerLeft % 60).padStart(2, "0");
-        const el = $("#timer-display");
-        if (el) el.textContent = `${m}:${s}`;
-      };
-      tick();
-      timerId = setInterval(() => {
-        timerLeft -= 1;
-        tick();
-        if (timerLeft <= 0) {
-          clearInterval(timerId);
-          toast("Zeit ist um");
-          closeSheet();
-          goStep(contains(tree, 7) && contains(tree, 3) ? 2 : 1);
-        }
-      }, 1000);
     }
   });
 }
 
 function boot() {
   renderSubjects();
+  renderFileTree();
   renderSkills();
-  updateHome();
-  setActivity("explorer");
-  setWorkspaceMenu(false);
-  showScreen("home");
+  updateChrome();
+  renderArtifactPane();
+  showOverlay("home");
   wire();
   const w = setInterval(() => {
     if (window.katex) {
