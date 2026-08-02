@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0c4a4a" />
-    <meta name="description" content="Atrium — adaptiv: Fokus auf dem Handy, Cursor-Shell auf dem Desktop." />
+    <meta name="description" content="Atrium — Cursor-ähnliche Shell, Artefakte als LaTeX." />
     <title>Atrium</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,57 +13,68 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous" />
+    <link rel="stylesheet" type="text/css" href="https://tikzjax.com/v1/fonts.css" />
     <link rel="stylesheet" href="./assets/styles.css" />
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+    <script defer src="https://tikzjax.com/v1/tikzjax.js"></script>
     <script defer src="./assets/app.js"></script>
   </head>
   <body>
     <div class="app" id="app">
-      <!-- Desktop left rail (hidden on mobile) -->
-      <aside class="desk-nav" id="desk-nav" aria-label="Navigation">
-        <div class="desk-brand">
-          <div class="brand-mark" aria-hidden="true"></div>
-          <span class="brand-name">Atrium</span>
+      <!-- Cursor-like: Activity Bar + one Side Bar view -->
+      <aside class="desk-nav" id="desk-nav" aria-label="Primary Side Bar">
+        <div class="activity-bar" role="toolbar" aria-label="Activity Bar">
+          <button type="button" class="act-btn" data-activity="explorer" aria-pressed="true" title="Explorer">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h6l2 2h8v10H4z"/></svg>
+          </button>
+          <button type="button" class="act-btn" data-activity="search" aria-pressed="false" title="Suche">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>
+          </button>
+          <button type="button" class="act-btn" data-activity="progress" aria-pressed="false" title="Übersicht">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6"/></svg>
+          </button>
+          <div class="act-spacer"></div>
+          <button type="button" class="act-btn" data-open="more" title="Einstellungen">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/></svg>
+          </button>
         </div>
 
-        <div class="desk-block">
-          <div class="desk-label">Lernort</div>
-          <div class="seg compact" role="group" aria-label="Lernort">
-            <button type="button" data-place="schule">Schule</button>
-            <button type="button" data-place="ausbildung">Ausb.</button>
-            <button type="button" data-place="studium" aria-pressed="true">Studium</button>
-          </div>
-        </div>
-
-        <div class="desk-block grow">
-          <div class="desk-label">Fächer</div>
-          <ul class="desk-subjects" id="desk-subjects"></ul>
-        </div>
-
-        <div class="desk-block grow">
-          <div class="desk-label-row">
-            <span class="desk-label">Dateien</span>
-            <button class="tiny-btn" type="button" id="toggle-files" aria-expanded="false">zeigen</button>
-          </div>
-          <div class="desk-files" id="desk-files" hidden>
-            <div class="lens-row" id="desk-lens-row">
-              <button type="button" data-lens="heute" aria-selected="true">Heute</button>
-              <button type="button" data-lens="stoff">Stoff</button>
-              <button type="button" data-lens="arbeit">Arbeit</button>
-              <button type="button" data-lens="gedachtnis">Gedächtnis</button>
+        <div class="side-panel">
+          <!-- EXPLORER: only files — workspace switch like Cursor folder -->
+          <div class="side-view is-active" id="view-explorer" data-side-view="explorer">
+            <div class="side-title">Explorer</div>
+            <button type="button" class="workspace-chip" id="workspace-chip" aria-expanded="false">
+              <span id="workspace-label">Studium / Informatik</span>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="workspace-menu" id="workspace-menu" hidden>
+              <div class="desk-label">Lernort</div>
+              <div class="seg compact" role="group">
+                <button type="button" data-place="schule">Schule</button>
+                <button type="button" data-place="ausbildung">Ausb.</button>
+                <button type="button" data-place="studium" aria-pressed="true">Studium</button>
+              </div>
+              <div class="desk-label" style="margin-top:0.65rem">Fach (= Agent)</div>
+              <ul class="desk-subjects" id="desk-subjects"></ul>
             </div>
-            <ul class="file-list" id="desk-file-list"></ul>
+            <ul class="file-tree" id="file-tree" aria-label="Dateibaum"></ul>
           </div>
-        </div>
 
-        <div class="desk-foot">
-          <button class="text-btn" type="button" data-open="more">Übersicht &amp; Einstellungen</button>
+          <div class="side-view" id="view-search" data-side-view="search" hidden>
+            <div class="side-title">Suche</div>
+            <input class="search-input" type="search" placeholder="In diesem Fach…" id="search-input" />
+            <p class="rail-idle-text">Demo — später Volltext über Stoff &amp; Notizen.</p>
+          </div>
+
+          <div class="side-view" id="view-progress" data-side-view="progress" hidden>
+            <div class="side-title">Übersicht</div>
+            <div class="stats-mini" id="desk-stats"></div>
+            <div class="skill-list" id="desk-skills"></div>
+          </div>
         </div>
       </aside>
 
-      <!-- Main column -->
       <div class="desk-main">
-        <!-- HEUTE -->
         <section class="screen is-active" id="screen-home" data-screen="home">
           <header class="home-top mobile-only">
             <div class="brand">
@@ -72,24 +83,20 @@
             </div>
             <button class="text-btn" type="button" data-open="more">Mehr</button>
           </header>
-
           <div class="home-body">
             <p class="eyebrow" id="home-place">Studium</p>
             <h1 class="home-title">Weiterlernen</h1>
             <p class="home-sub">Ein Schritt. Der Rest wartet.</p>
-
             <button class="next-card" type="button" id="start-session">
               <span class="next-kicker">Als Nächstes</span>
               <span class="next-title" id="next-title">Informatik · BST einfügen</span>
               <span class="next-meta" id="next-meta">Weil Insert laut deinem Stand noch unsicher ist</span>
               <span class="next-cta">Session starten</span>
             </button>
-
             <button class="quiet-link" type="button" id="start-go">Nur 3 Minuten? Kurze Aktivierung</button>
           </div>
         </section>
 
-        <!-- FOCUS -->
         <section class="screen" id="screen-focus" data-screen="focus">
           <header class="focus-top">
             <button class="icon-btn" type="button" id="exit-focus" aria-label="Zurück">
@@ -107,12 +114,10 @@
               </svg>
             </button>
           </header>
-
           <div class="focus-stage" id="focus-stage"></div>
           <footer class="focus-footer" id="focus-footer"></footer>
         </section>
 
-        <!-- GO -->
         <section class="screen" id="screen-go" data-screen="go">
           <header class="focus-top">
             <button class="icon-btn" type="button" data-go-home aria-label="Zurück">
@@ -127,7 +132,6 @@
           <div class="go-body" id="go-body"></div>
         </section>
 
-        <!-- MORE -->
         <section class="screen" id="screen-more" data-screen="more">
           <header class="home-top">
             <h1 class="page-title">Mehr</h1>
@@ -136,57 +140,45 @@
           <div class="more-body">
             <div class="more-block mobile-only">
               <h2>Lernort</h2>
-              <div class="seg" role="group" aria-label="Lernort">
+              <div class="seg" role="group">
                 <button type="button" data-place="schule">Schule</button>
                 <button type="button" data-place="ausbildung">Ausbildung</button>
                 <button type="button" data-place="studium" aria-pressed="true">Studium</button>
               </div>
             </div>
-
             <div class="more-block mobile-only">
               <h2>Fach-Agent</h2>
               <ul class="pick-list" id="subject-picks"></ul>
             </div>
-
             <div class="more-block">
               <h2>Agenten-Modus</h2>
-              <div class="seg" role="group" aria-label="Modus">
+              <div class="seg" role="group">
                 <button type="button" data-mode="tutor" aria-pressed="true">Tutor</button>
                 <button type="button" data-mode="examiner" aria-pressed="false">Examiner</button>
               </div>
-              <p class="help-line">Examiner = keine Hints, echte Prüfungssimulation.</p>
             </div>
-
             <details class="more-details mobile-only">
               <summary>Dateien</summary>
-              <div class="lens-row" id="lens-row">
-                <button type="button" data-lens="heute" aria-selected="true">Heute</button>
-                <button type="button" data-lens="stoff">Stoff</button>
-                <button type="button" data-lens="arbeit">Arbeit</button>
-                <button type="button" data-lens="gedachtnis">Gedächtnis</button>
-              </div>
-              <ul class="file-list" id="file-list"></ul>
+              <ul class="file-tree" id="file-tree-mobile"></ul>
             </details>
-
             <details class="more-details" open>
               <summary>Lernübersicht</summary>
               <div class="stats-mini" id="stats-mini"></div>
               <div class="skill-list" id="skill-list"></div>
             </details>
-
             <p class="design-note">
-              Desktop: Cursor-ähnliche 3-Spalten-Shell. Mobil: ein Schritt nach dem anderen.
-              Gleiche Inhalte — andere Anordnung.
+              Wie in Cursor/VS Code: Activity Bar schaltet <em>eine</em> Sidebar-Ansicht.
+              Explorer = Dateibaum. Workspace (Lernort/Fach) oben umschalten — nicht dauerhaft unter den Dateien.
+              Grafik-Artefakte: LaTeX/TikZ als Quelle, nicht Custom-JSON.
             </p>
           </div>
         </section>
       </div>
 
-      <!-- Desktop right rail: active artifact (hidden on mobile / when idle) -->
       <aside class="desk-rail" id="desk-rail" aria-label="Workspace" data-state="idle">
         <div class="rail-idle">
           <p class="desk-label">Workspace</p>
-          <p class="rail-idle-text">Artefakte erscheinen hier, sobald die Session sie braucht.</p>
+          <p class="rail-idle-text">Artefakte (LaTeX) erscheinen hier, wenn die Session sie braucht.</p>
         </div>
       </aside>
     </div>
@@ -197,8 +189,7 @@
       <button type="button" data-menu="notes">Notiz öffnen</button>
       <button type="button" data-menu="photo">Foto zur Korrektur</button>
       <button type="button" data-menu="timer">Timer 5 Min</button>
-      <button type="button" data-menu="state">Agent-State anzeigen</button>
-      <button type="button" data-menu="files">Dateien</button>
+      <button type="button" data-menu="latex">LaTeX-Quelle zeigen</button>
       <button type="button" class="danger" data-menu="exit">Session beenden</button>
     </div>
 

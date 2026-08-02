@@ -1,4 +1,4 @@
-/* Atrium — adaptive: staged mobile · Cursor shell desktop */
+/* Atrium — Cursor-like explorer + LaTeX artifacts */
 
 const places = {
   schule: {
@@ -25,24 +25,45 @@ const places = {
   },
 };
 
-const filesByLens = {
-  heute: [
-    { name: "Übung 04 · Bäume", meta: "Fach" },
-    { name: "learner-model.md", meta: "Gedächtnis" },
-  ],
-  stoff: [
-    { name: "Skript Kap. 3", meta: "Fachmaterial" },
-    { name: "Folien VL07", meta: "Lernort" },
-  ],
-  arbeit: [
-    { name: "Mitschrift 28.07.", meta: "Notiz" },
-    { name: "foto-uebung.jpg", meta: "Papier" },
-  ],
-  gedachtnis: [
-    { name: "learner-model.md", meta: "Stand" },
-    { name: "skill-graph.json", meta: "Skills" },
-  ],
-};
+/** Explorer folders — like a project tree, not parallel to subjects */
+const treeFolders = [
+  {
+    id: "heute",
+    name: "heute",
+    open: true,
+    files: [
+      { name: "warm-up.md", meta: "Challenge" },
+      { name: "uebung-04-baeume.md", meta: "Aufgabe" },
+    ],
+  },
+  {
+    id: "stoff",
+    name: "stoff",
+    open: true,
+    files: [
+      { name: "skript-kap-3.pdf", meta: "Material" },
+      { name: "folien-vl07.pdf", meta: "Vorlesung" },
+    ],
+  },
+  {
+    id: "arbeit",
+    name: "arbeit",
+    open: false,
+    files: [
+      { name: "mitschrift-2026-07-28.md", meta: "Notiz" },
+      { name: "foto-uebung-03.jpg", meta: "Papier" },
+    ],
+  },
+  {
+    id: "gedachtnis",
+    name: "gedachtnis",
+    open: false,
+    files: [
+      { name: "learner-model.md", meta: "Stand" },
+      { name: "rubrik.md", meta: "Bewertung" },
+    ],
+  },
+];
 
 const whyText = {
   informatik: "Insert in BSTs ist laut learner-model noch unsicher — deshalb genau diese Aufgabe.",
@@ -54,19 +75,19 @@ const whyText = {
   praxis: "Betriebliche Checkliste ist offen.",
 };
 
+const BST_INVARIANT = "\\forall y\\in\\mathrm{left}(x):\\, y < x \\quad\\wedge\\quad \\forall y\\in\\mathrm{right}(x):\\, y > x";
+
 let place = "studium";
 let subjectId = "informatik";
 let agentMode = "tutor";
-let lens = "heute";
+let activity = "explorer";
 let step = 0;
 let screen = "home";
 let tree = { v: 5, l: null, r: null };
-let actions = [];
 let timerId = null;
 let timerLeft = 300;
 let note = `BST: links < Knoten < rechts
 Heute: Insert üben`;
-let filesOpen = false;
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -87,118 +108,27 @@ function toast(msg) {
   toast._t = setTimeout(() => el.classList.remove("show"), 2200);
 }
 
-function artifactHtml(withActions = true) {
-  return `<div class="artifact-simple">
-    <h2>BST · einfügen</h2>
-    <svg class="tree-canvas" viewBox="0 0 320 170" role="img" aria-label="Binärbaum"></svg>
-    ${
-      withActions
-        ? `<div class="actions">
-      <button class="btn btn-mono" type="button" data-insert="7">insert(7)</button>
-      <button class="btn btn-mono" type="button" data-insert="3">insert(3)</button>
-      <button class="btn btn-mono" type="button" data-insert="9">insert(9)</button>
-    </div>`
-        : ""
-    }
-  </div>`;
+/* ——— LaTeX as artifact source of truth ——— */
+
+function tikzNode(node) {
+  let s = `node {${node.v}}`;
+  if (node.l) s += ` child { ${tikzNode(node.l)} }`;
+  if (node.r) s += ` child { ${tikzNode(node.r)} }`;
+  return s;
 }
 
-function idleRail() {
-  return `<div class="rail-idle">
-    <p class="desk-label">Workspace</p>
-    <p class="rail-idle-text">Artefakte erscheinen hier, sobald die Session sie braucht.</p>
-  </div>`;
-}
-
-function updateLayoutAttr() {
-  const app = $("#app");
-  if (!isDesktop()) {
-    app.removeAttribute("data-layout");
-    return;
-  }
-  if (screen === "focus") {
-    const needsRail = step === 1 || step === 2;
-    app.dataset.layout = needsRail ? "focus" : "focus-idle";
-  } else {
-    app.dataset.layout = "browse";
-  }
-}
-
-function showScreen(name) {
-  screen = name;
-  $$(".screen").forEach((el) => el.classList.toggle("is-active", el.dataset.screen === name));
-  closeMenu();
-  closeSheet();
-  updateLayoutAttr();
-  if (name !== "focus") {
-    $("#desk-rail").innerHTML = idleRail();
-    $("#desk-rail").dataset.state = "idle";
-  }
-}
-
-function updateHome() {
-  const s = subject();
-  $("#home-place").textContent = places[place].label;
-  $("#next-title").textContent = `${s.name} · ${s.next}`;
-  $("#next-meta").textContent = whyText[s.id] || "Aus deinem aktuellen Lernstand abgeleitet.";
-  $("#focus-title").textContent = s.name;
-}
-
-function renderSubjects() {
-  const mobileList = $("#subject-picks");
-  const deskList = $("#desk-subjects");
-  const htmlMobile = places[place].subjects
-    .map(
-      (s) => `<li><button type="button" data-pick-subject="${s.id}" ${
-        s.id === subjectId ? 'aria-current="true"' : ""
-      }><strong>${s.name}</strong><span>${s.blurb}</span></button></li>`
-    )
-    .join("");
-  const htmlDesk = places[place].subjects
-    .map(
-      (s) => `<li><button type="button" data-pick-subject="${s.id}" ${
-        s.id === subjectId ? 'aria-current="true"' : ""
-      }><strong>${s.name}</strong><span>${s.blurb}</span></button></li>`
-    )
-    .join("");
-  if (mobileList) mobileList.innerHTML = htmlMobile;
-  if (deskList) deskList.innerHTML = htmlDesk;
-  $$("[data-place]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.place === place ? "true" : "false"));
-  $$("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === agentMode ? "true" : "false"));
-  updateHome();
-}
-
-function renderFiles() {
-  const html = (filesByLens[lens] || [])
-    .map((f) => `<li>${f.name}<small>${f.meta}</small></li>`)
-    .join("");
-  const mobile = $("#file-list");
-  const desk = $("#desk-file-list");
-  if (mobile) mobile.innerHTML = html;
-  if (desk) desk.innerHTML = html;
-  $$("[data-lens]").forEach((b) => b.setAttribute("aria-selected", b.dataset.lens === lens ? "true" : "false"));
-}
-
-function renderSkills() {
-  $("#stats-mini").innerHTML = `
-    <div><small>Heute</small><strong>42 min</strong></div>
-    <div><small>Readiness</small><strong>68%</strong></div>`;
-  $("#skill-list").innerHTML = [
-    ["Binäre Suchbäume", "72%"],
-    ["Inorder / Preorder", "54%"],
-    ["O-Notation", "81%"],
-  ]
-    .map(
-      ([n, w]) =>
-        `<div class="skill"><div style="display:flex;justify-content:space-between"><span>${n}</span><span style="color:var(--muted)">${w}</span></div><div class="bar"><i style="--w:${w}"></i></div></div>`
-    )
-    .join("");
-}
-
-function setDots(activeCount) {
-  $("#focus-dots").innerHTML = [0, 1, 2, 3]
-    .map((i) => `<i class="${i < activeCount ? "on" : ""}"></i>`)
-    .join("");
+/** Canonical agent-readable representation */
+function treeToLatex(root = tree) {
+  return [
+    "\\begin{tikzpicture}[",
+    "  every node/.style={circle, draw=teal!60!black, fill=teal!8,",
+    "    minimum size=7mm, inner sep=1pt, font=\\sffamily\\bfseries\\small},",
+    "  edge from parent/.style={draw=black!40, thick},",
+    "  level distance=12mm, sibling distance=18mm",
+    "]",
+    `\\${tikzNode(root)};`,
+    "\\end{tikzpicture}",
+  ].join("\n");
 }
 
 function insertBST(node, value) {
@@ -222,7 +152,8 @@ function layout(node, x, y, gap, out = []) {
   return out;
 }
 
-function treeSvg() {
+/** Fast preview SVG — visual only; agent reads LaTeX */
+function previewSvg() {
   const pts = layout(tree, 160, 32, 68);
   const map = Object.fromEntries(pts.map((p) => [p.v, p]));
   let lines = "";
@@ -236,29 +167,173 @@ function treeSvg() {
       lines += `<line x1="${p.x}" y1="${p.y}" x2="${c.x}" y2="${c.y}" stroke="#9aaca6"/>`;
     }
   }
-  return (
-    lines +
-    pts
-      .map(
-        (p) =>
-          `<g><circle cx="${p.x}" cy="${p.y}" r="15" fill="#0f6b6b"/><text x="${p.x}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="12" font-family="Sora,sans-serif" font-weight="600">${p.v}</text></g>`
-      )
-      .join("")
-  );
+  const nodes = pts
+    .map(
+      (p) =>
+        `<g><circle cx="${p.x}" cy="${p.y}" r="15" fill="#0f6b6b"/><text x="${p.x}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="12" font-family="Sora,sans-serif" font-weight="600">${p.v}</text></g>`
+    )
+    .join("");
+  return `<svg class="tree-canvas" viewBox="0 0 320 170" role="img" aria-label="BST-Vorschau">${lines}${nodes}</svg>`;
 }
 
-function paintTrees() {
-  $$(".tree-canvas").forEach((el) => {
-    el.innerHTML = treeSvg();
+function renderTikzHosts() {
+  const latex = treeToLatex();
+  $$(".latex-src").forEach((el) => {
+    el.textContent = latex;
+  });
+  $$(".tikz-host").forEach((host) => {
+    // Live preview (snappy). TikZJax can replace when available.
+    host.innerHTML = previewSvg();
+    const script = document.createElement("script");
+    script.type = "text/tikz";
+    script.textContent = latex;
+    // Keep preview; TikZJax replaces script tags — append after preview for engines that swap script→svg
+    // If TikZJax runs, it may leave preview; we prefer preview for interaction speed.
+    host.dataset.latex = latex;
   });
 }
 
-function stateJson() {
-  return JSON.stringify(
-    { type: "binary_tree", goal: "insert 7 and 3", tree, learner_actions: actions },
-    null,
-    2
+function artifactHtml(withActions = true) {
+  return `<div class="artifact-simple">
+    <h2>BST · einfügen</h2>
+    <div class="tikz-host" aria-label="Grafik aus LaTeX"></div>
+    ${
+      withActions
+        ? `<div class="actions">
+      <button class="btn btn-mono" type="button" data-insert="7">insert(7)</button>
+      <button class="btn btn-mono" type="button" data-insert="3">insert(3)</button>
+      <button class="btn btn-mono" type="button" data-insert="9">insert(9)</button>
+    </div>`
+        : ""
+    }
+    <div class="src-label">LaTeX · Agent-State</div>
+    <pre class="latex-src"></pre>
+  </div>`;
+}
+
+function idleRail() {
+  return `<div class="rail-idle">
+    <p class="desk-label">Workspace</p>
+    <p class="rail-idle-text">Artefakte als LaTeX/TikZ erscheinen hier, wenn die Session sie braucht.</p>
+  </div>`;
+}
+
+function updateLayoutAttr() {
+  const app = $("#app");
+  if (!isDesktop()) {
+    app.removeAttribute("data-layout");
+    return;
+  }
+  if (screen === "focus") {
+    app.dataset.layout = step === 1 || step === 2 ? "focus" : "focus-idle";
+  } else {
+    app.dataset.layout = "browse";
+  }
+}
+
+function showScreen(name) {
+  screen = name;
+  $$(".screen").forEach((el) => el.classList.toggle("is-active", el.dataset.screen === name));
+  closeMenu();
+  closeSheet();
+  updateLayoutAttr();
+  if (name !== "focus") {
+    $("#desk-rail").innerHTML = idleRail();
+    $("#desk-rail").dataset.state = "idle";
+  }
+}
+
+function updateHome() {
+  const s = subject();
+  $("#home-place").textContent = places[place].label;
+  $("#next-title").textContent = `${s.name} · ${s.next}`;
+  $("#next-meta").textContent = whyText[s.id] || "Aus deinem aktuellen Lernstand abgeleitet.";
+  $("#focus-title").textContent = s.name;
+  const label = `${places[place].label} / ${s.name}`;
+  const chip = $("#workspace-label");
+  if (chip) chip.textContent = label;
+}
+
+function renderSubjects() {
+  const html = places[place].subjects
+    .map(
+      (s) => `<li><button type="button" data-pick-subject="${s.id}" ${
+        s.id === subjectId ? 'aria-current="true"' : ""
+      }><strong>${s.name}</strong><span>${s.blurb}</span></button></li>`
+    )
+    .join("");
+  const mobile = $("#subject-picks");
+  const desk = $("#desk-subjects");
+  if (mobile) mobile.innerHTML = html;
+  if (desk) desk.innerHTML = html;
+  $$("[data-place]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.place === place ? "true" : "false"));
+  $$("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === agentMode ? "true" : "false"));
+  updateHome();
+  renderFileTree();
+}
+
+function renderFileTree() {
+  const html = treeFolders
+    .map(
+      (f) => `<li class="folder" data-folder="${f.id}" data-open="${f.open ? "true" : "false"}">
+      <button type="button" class="folder-label" data-toggle-folder="${f.id}">
+        <span class="chev">▾</span> ${f.name}
+      </button>
+      <ul>
+        ${f.files
+          .map(
+            (file) =>
+              `<li><button type="button" class="file-row" data-file="${file.name}"><span>${file.name}</span><small>${file.meta}</small></button></li>`
+          )
+          .join("")}
+      </ul>
+    </li>`
+    )
+    .join("");
+  const desk = $("#file-tree");
+  const mobile = $("#file-tree-mobile");
+  if (desk) desk.innerHTML = html;
+  if (mobile) mobile.innerHTML = html;
+}
+
+function renderSkills() {
+  const stats = `
+    <div><small>Heute</small><strong>42 min</strong></div>
+    <div><small>Readiness</small><strong>68%</strong></div>`;
+  const skills = [
+    ["Binäre Suchbäume", "72%"],
+    ["Inorder / Preorder", "54%"],
+    ["O-Notation", "81%"],
+  ]
+    .map(
+      ([n, w]) =>
+        `<div class="skill"><div style="display:flex;justify-content:space-between"><span>${n}</span><span style="color:var(--muted)">${w}</span></div><div class="bar"><i style="--w:${w}"></i></div></div>`
+    )
+    .join("");
+  const a = $("#stats-mini");
+  const b = $("#skill-list");
+  const c = $("#desk-stats");
+  const d = $("#desk-skills");
+  if (a) a.innerHTML = stats;
+  if (b) b.innerHTML = skills;
+  if (c) c.innerHTML = stats;
+  if (d) d.innerHTML = skills;
+}
+
+function setActivity(name) {
+  activity = name;
+  $$(".act-btn[data-activity]").forEach((b) =>
+    b.setAttribute("aria-pressed", b.dataset.activity === name ? "true" : "false")
   );
+  $$(".side-view").forEach((v) => {
+    const on = v.dataset.sideView === name;
+    v.classList.toggle("is-active", on);
+    v.hidden = !on;
+  });
+}
+
+function setDots(n) {
+  $("#focus-dots").innerHTML = [0, 1, 2, 3].map((i) => `<i class="${i < n ? "on" : ""}"></i>`).join("");
 }
 
 function renderKatex(root = document) {
@@ -274,7 +349,6 @@ function renderKatex(root = document) {
   });
 }
 
-/** Present step: mobile stacks; desktop splits artifact into right rail */
 function present({ dots, agent, footer, artifact = null }) {
   setDots(dots);
   const desk = isDesktop();
@@ -290,40 +364,37 @@ function present({ dots, agent, footer, artifact = null }) {
     $("#focus-stage").innerHTML = agent + (artifact || "");
   }
   $("#focus-footer").innerHTML = footer;
-  paintTrees();
+  if (artifact) renderTikzHosts();
   renderKatex($("#focus-stage"));
   updateLayoutAttr();
 }
 
 const steps = [
   {
-    dots: 1,
     render() {
       const agent =
         agentMode === "examiner"
           ? `<div class="step-agent"><p>Examiner-Modus. Keine Tipps.</p><p>Aufgabe: Füge <strong>7</strong> und <strong>3</strong> in den Baum ein.</p></div>`
           : `<div class="step-agent">
               <p>Kurz und klar: Wir üben <strong>BST-Insert</strong>.</p>
-              <p>Ziel: <strong>7</strong> und <strong>3</strong> korrekt einfügen. Alles andere später.</p>
+              <p>Ziel: <strong>7</strong> und <strong>3</strong> korrekt einfügen. Darstellung &amp; Agent-State: <strong>LaTeX/TikZ</strong>.</p>
             </div>`;
       present({
         dots: 1,
         agent,
         footer: `<button class="btn btn-primary" type="button" data-next>Weiter zur Aufgabe</button>
-          ${agentMode === "tutor" ? `<button class="hint-link" type="button" data-show-formula>Formel kurz zeigen</button>` : ""}`,
-        artifact: null,
+          ${agentMode === "tutor" ? `<button class="hint-link" type="button" data-show-formula>Formel (LaTeX)</button>` : ""}`,
       });
     },
   },
   {
-    dots: 2,
     render() {
       present({
         dots: 2,
         agent: `<div class="step-agent"><p>${
           isDesktop()
-            ? "Arbeit rechts im Workspace. Ich lese denselben State — du musst ihn nicht öffnen."
-            : "Arbeit am Artefakt. Der Agent liest denselben State — du musst ihn nicht sehen."
+            ? "Rechts: TikZ-Vorschau + LaTeX-Quelle. Der Agent liest den LaTeX-Quelltext — kein Custom-JSON."
+            : "Unten: Grafik + LaTeX-Quelle. Der Agent liest LaTeX, nicht ein Eigenformat."
         }</p></div>`,
         footer: `<button class="btn btn-primary" type="button" data-check>Prüfen</button>
           <button class="btn btn-ghost" type="button" data-ask>Frage stellen…</button>`,
@@ -332,15 +403,14 @@ const steps = [
     },
   },
   {
-    dots: 3,
     render() {
       const ok = contains(tree, 7) && contains(tree, 3);
       present({
         dots: 3,
         agent: `<div class="feedback ${ok ? "" : "bad"}">${
           ok
-            ? "Passt. 7 und 3 sitzen richtig. Als Nächstes eine kurze Retrieval-Frage — ohne Baum."
-            : "Noch nicht vollständig. Geh einen Schritt zurück und füge die fehlenden Werte ein."
+            ? "Passt. Die LaTeX-Quelle enthält 7 und 3 korrekt. Weiter: Retrieval ohne Baum."
+            : "Noch unvollständig — fehlende Werte in der LaTeX-Quelle."
         }</div>`,
         footer: ok
           ? `<button class="btn btn-primary" type="button" data-next>Weiter · Retrieval</button>`
@@ -350,7 +420,6 @@ const steps = [
     },
   },
   {
-    dots: 4,
     render() {
       present({
         dots: 4,
@@ -361,22 +430,19 @@ const steps = [
             <button class="btn" type="button" data-quiz="post">Postorder</button>
           </div>`,
         footer: "",
-        artifact: null,
       });
     },
   },
   {
-    dots: 4,
     render() {
       present({
         dots: 4,
         agent: `<div class="step-agent">
             <p>Session zu Ende. Gut gemacht.</p>
-            <p>Dein learner-model wird ergänzt. Dateien und Stats bleiben außerhalb vom Fokus.</p>
+            <p>Learner-model wird ergänzt. Explorer bleibt für Dateien — nicht für parallele Fächer-Listen.</p>
           </div>
           <div class="event">Reflexion gespeichert (Demo)</div>`,
         footer: `<button class="btn btn-primary" type="button" data-go-home>Zurück zu Heute</button>`,
-        artifact: null,
       });
     },
   },
@@ -389,7 +455,6 @@ function goStep(i) {
 
 function startSession() {
   tree = { v: 5, l: null, r: null };
-  actions = [];
   clearInterval(timerId);
   timerId = null;
   timerLeft = 300;
@@ -434,14 +499,12 @@ function startGo() {
     </div>`;
 }
 
-function setFilesOpen(open) {
-  filesOpen = open;
-  const panel = $("#desk-files");
-  const btn = $("#toggle-files");
-  if (!panel || !btn) return;
-  panel.hidden = !open;
-  btn.setAttribute("aria-expanded", open ? "true" : "false");
-  btn.textContent = open ? "verbergen" : "zeigen";
+function setWorkspaceMenu(open) {
+  const menu = $("#workspace-menu");
+  const chip = $("#workspace-chip");
+  if (!menu || !chip) return;
+  menu.hidden = !open;
+  chip.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function wire() {
@@ -452,7 +515,11 @@ function wire() {
   $("#menu-backdrop").addEventListener("click", closeMenu);
   $("#sheet-close").addEventListener("click", closeSheet);
   $("#sheet-backdrop").addEventListener("click", closeSheet);
-  $("#toggle-files")?.addEventListener("click", () => setFilesOpen(!filesOpen));
+
+  $("#workspace-chip")?.addEventListener("click", () => {
+    const open = $("#workspace-menu").hidden;
+    setWorkspaceMenu(open);
+  });
 
   window.addEventListener("resize", () => {
     updateLayoutAttr();
@@ -460,12 +527,34 @@ function wire() {
   });
 
   document.addEventListener("click", (e) => {
+    const act = e.target.closest(".act-btn[data-activity]");
+    if (act) {
+      setActivity(act.dataset.activity);
+      return;
+    }
+
     if (e.target.closest("[data-go-home]")) {
       showScreen("home");
       return;
     }
     if (e.target.closest('[data-open="more"]')) {
       showScreen("more");
+      return;
+    }
+
+    const folderBtn = e.target.closest("[data-toggle-folder]");
+    if (folderBtn) {
+      const id = folderBtn.dataset.toggleFolder;
+      const folder = treeFolders.find((f) => f.id === id);
+      if (folder) {
+        folder.open = !folder.open;
+        renderFileTree();
+      }
+      return;
+    }
+
+    if (e.target.closest("[data-file]")) {
+      toast(`Öffnen (Demo): ${e.target.closest("[data-file]").dataset.file}`);
       return;
     }
 
@@ -490,15 +579,9 @@ function wire() {
     if (pick) {
       subjectId = pick.dataset.pickSubject;
       renderSubjects();
+      setWorkspaceMenu(false);
       toast(subject().name);
       if (screen === "focus") goStep(step);
-      return;
-    }
-
-    const lensBtn = e.target.closest("[data-lens]");
-    if (lensBtn) {
-      lens = lensBtn.dataset.lens;
-      renderFiles();
       return;
     }
 
@@ -513,19 +596,20 @@ function wire() {
 
     if (e.target.closest("[data-show-formula]")) {
       openSheet(
-        "Formel",
-        `<p>BST-Invariante:</p><div class="tex block" data-tex="\\forall y\\in\\mathrm{left}(x):\\,y<x\\quad\\wedge\\quad\\forall y\\in\\mathrm{right}(x):\\,y>x"></div><p style="color:var(--muted);font-size:.88rem">Danach wieder zu — Fokus auf die Aufgabe.</p>`
+        "Formel · LaTeX",
+        `<p>Quelle (KaTeX):</p>
+         <pre class="latex-src">${BST_INVARIANT}</pre>
+         <p style="margin:.75rem 0 .35rem">Gerendert:</p>
+         <div class="tex block" data-tex="${BST_INVARIANT}"></div>`
       );
       return;
     }
 
     const ins = e.target.closest("[data-insert]");
     if (ins) {
-      const v = Number(ins.dataset.insert);
-      tree = insertBST(tree, v);
-      actions.push(`insert:${v}`);
-      paintTrees();
-      toast(`insert(${v})`);
+      tree = insertBST(tree, Number(ins.dataset.insert));
+      renderTikzHosts();
+      toast(`LaTeX aktualisiert · insert(${ins.dataset.insert})`);
       return;
     }
 
@@ -549,17 +633,13 @@ function wire() {
       const text = ($("#ask-input")?.value || "").trim();
       if (!text) return;
       closeSheet();
-      const stage = $("#focus-stage");
-      stage.insertAdjacentHTML(
+      $("#focus-stage").insertAdjacentHTML(
         "beforeend",
         `<div class="chat-mini"><div class="bubble-you">${text.replace(/</g, "&lt;")}</div>
         <div class="step-agent"><p>${
-          agentMode === "examiner"
-            ? "Im Examiner-Modus keine Erklärung — weiter am Artefakt."
-            : "Kurz: links kleiner, rechts größer. Probier insert nochmal."
+          agentMode === "examiner" ? "Keine Erklärung im Examiner-Modus." : "Kurz: links kleiner, rechts größer."
         }</p></div></div>`
       );
-      stage.scrollTop = stage.scrollHeight;
       return;
     }
 
@@ -568,11 +648,8 @@ function wire() {
       const ok = quiz.dataset.quiz === "in";
       present({
         dots: 4,
-        agent: `<div class="feedback ${ok ? "" : "bad"}">${
-          ok ? "Genau — Inorder." : "Nicht ganz. Richtig wäre Inorder."
-        }</div>`,
+        agent: `<div class="feedback ${ok ? "" : "bad"}">${ok ? "Genau — Inorder." : "Nicht ganz. Richtig wäre Inorder."}</div>`,
         footer: `<button class="btn btn-primary" type="button" data-next>Abschluss</button>`,
-        artifact: null,
       });
       return;
     }
@@ -588,42 +665,32 @@ function wire() {
 
     const menu = e.target.closest("#menu-sheet [data-menu]");
     if (menu) {
-      const act = menu.dataset.menu;
+      const actName = menu.dataset.menu;
       closeMenu();
-      if (act === "exit") showScreen("home");
-      if (act === "why")
+      if (actName === "exit") showScreen("home");
+      if (actName === "why")
         openSheet("Warum diese Aufgabe?", `<p>${whyText[subject().id] || "Aus deinem learner-model."}</p>`);
-      if (act === "notes")
+      if (actName === "notes")
         openSheet(
           "Notiz",
           `<textarea class="note-area" id="note-area">${note.replace(/</g, "&lt;")}</textarea>
            <button class="btn btn-secondary" type="button" id="save-note" style="margin-top:.65rem;width:100%">Übernehmen</button>`
         );
-      if (act === "photo")
+      if (actName === "photo")
         openSheet(
           "Foto-Korrektur",
           `<div class="photo-mock"><p>Foto laden (Demo)</p>
            <button class="btn btn-secondary" type="button" id="sim-photo" style="margin-top:.5rem">Beispiel zeigen</button>
            <div id="photo-out"></div></div>`
         );
-      if (act === "timer") {
+      if (actName === "timer") {
         openSheet(
           "Timer",
-          `<div class="timer-big"><strong id="timer-display">05:00</strong><span>Agent wertet bei Ablauf den Artefakt-State aus</span></div>
+          `<div class="timer-big"><strong id="timer-display">05:00</strong><span>Bei Ablauf: LaTeX-State auswerten</span></div>
            <button class="btn btn-primary" type="button" id="timer-start">Start</button>`
         );
       }
-      if (act === "state") openSheet("Agent-State", `<pre>${stateJson()}</pre>`);
-      if (act === "files") {
-        if (isDesktop()) {
-          setFilesOpen(true);
-          toast("Dateien in der Seitenleiste");
-        } else {
-          showScreen("more");
-          const d = $$(".more-details.mobile-only")[0];
-          if (d) d.open = true;
-        }
-      }
+      if (actName === "latex") openSheet("LaTeX · Agent-State", `<pre class="latex-src">${treeToLatex()}</pre>`);
       return;
     }
 
@@ -636,7 +703,7 @@ function wire() {
 
     if (e.target.closest("#sim-photo")) {
       $("#photo-out").innerHTML = `<div class="paper-sheet">f(x)=x²+2x+1<br/>=(x+1)(x−1)?<span class="mark"></span></div>
-        <p style="margin:.65rem 0 0;font-size:.88rem">Korrektur: <span class="tex" data-tex="x^2+2x+1=(x+1)^2"></span></p>`;
+        <p style="margin:.65rem 0 0;font-size:.88rem">Korrektur (LaTeX): <span class="tex" data-tex="x^2+2x+1=(x+1)^2"></span></p>`;
       renderKatex($("#photo-out"));
       return;
     }
@@ -658,8 +725,7 @@ function wire() {
           clearInterval(timerId);
           toast("Zeit ist um");
           closeSheet();
-          const ok = contains(tree, 7) && contains(tree, 3);
-          goStep(ok ? 2 : 1);
+          goStep(contains(tree, 7) && contains(tree, 3) ? 2 : 1);
         }
       }, 1000);
     }
@@ -668,10 +734,10 @@ function wire() {
 
 function boot() {
   renderSubjects();
-  renderFiles();
   renderSkills();
   updateHome();
-  setFilesOpen(false);
+  setActivity("explorer");
+  setWorkspaceMenu(false);
   showScreen("home");
   wire();
   const w = setInterval(() => {

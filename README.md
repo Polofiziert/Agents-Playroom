@@ -26,10 +26,16 @@ Lern-UI nach **Progressive Disclosure** (NN/g): nur zeigen, was jetzt dran ist. 
 
 | | Mobil (&lt;1100px) | Desktop (≥1100px) |
 |--|------------------|-------------------|
-| Layout | Ein Spalten-Flow | Cursor-Shell: Nav · Session · Workspace |
+| Layout | Ein Spalten-Flow | Cursor-Shell: Activity Bar · Explorer · Session · Workspace |
 | Artefakt | Im Schritt gestapelt | Rechte Spalte, nur wenn nötig |
-| Dateien | Unter „Mehr“ | Linke Leiste, standardmäßig verborgen |
+| Dateien | Unter „Mehr“ | **Nur** Explorer (Dateibaum); Fach = Workspace-Umschalter oben |
+| Grafik | LaTeX/TikZ als Agent-State (kein Custom-JSON) | gleich |
 | Prinzip | Sequentiell (Zeit) | Parallel (Raum), trotzdem ruhig |
+
+### Wie Cursor die Sidebar regelt
+Activity Bar links schaltet **eine** Ansicht (Explorer / Suche / …).  
+Der Explorer zeigt den Dateibaum des aktuellen Folders — nicht dauerhaft eine zweite „Fächer“-Liste darüber.  
+Bei uns: Lernort/Fach = Workspace-Chip (aufklappbar), darunter nur der Dateibaum.
 
 ### Ansehen
 
